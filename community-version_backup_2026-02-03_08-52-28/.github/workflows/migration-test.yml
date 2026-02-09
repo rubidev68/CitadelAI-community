@@ -1,0 +1,50 @@
+name: Migration Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0' # Weekly on Sunday
+
+jobs:
+  test-migration:
+    runs-on: ubuntu-latest
+    name: Test Migration Process
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Check dependencies
+        run: |
+          chmod +x scripts/check-dependencies.sh
+          ./scripts/check-dependencies.sh
+          
+      - name: Run migration (dry-run)
+        run: |
+          chmod +x scripts/migrate-to-community-enhanced.sh
+          ./scripts/migrate-to-community-enhanced.sh --dry-run --no-backup
+          
+      - name: Validate migration output
+        if: success()
+        run: |
+          if [ -d "../community-version" ]; then
+            chmod +x scripts/validate-community-edition-enhanced.sh
+            ./scripts/validate-community-edition-enhanced.sh ../community-version || true
+          fi
+          
+      - name: Upload migration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-test-results
+          path: |
+            .migration-log-*.txt
+            .migration-report-*.txt
+            .validation-log-*.txt
+            .validation-report-*.txt
+          retention-days: 7

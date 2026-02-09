@@ -1,0 +1,67 @@
+name: Migration Check
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'community-version/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'community-version/**'
+
+jobs:
+  check-business-traces:
+    runs-on: ubuntu-latest
+    name: Check for Business Traces
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Check for business traces
+        run: |
+          chmod +x scripts/validate-community-edition-enhanced.sh || chmod +x scripts/validate-community-edition.sh
+          if [ -f scripts/validate-community-edition-enhanced.sh ]; then
+            ./scripts/validate-community-edition-enhanced.sh community-version
+          else
+            ./scripts/validate-community-edition.sh community-version
+          fi
+          
+      - name: Comment on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = '❌ Business traces found in Community Edition!\n\n';
+            
+            // Try to read validation report
+            try {
+              const files = fs.readdirSync('.').filter(f => f.startsWith('.validation-report-'));
+              if (files.length > 0) {
+                const reportContent = fs.readFileSync(files[0], 'utf8');
+                report += '```\n' + reportContent + '\n```\n';
+              }
+            } catch (e) {
+              report += 'Please review the validation log for details.\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+            
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: |
+            .validation-log-*.txt
+            .validation-report-*.txt
+          retention-days: 30

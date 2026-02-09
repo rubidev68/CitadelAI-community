@@ -1,0 +1,211 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User-related models
+model User {
+  id                String          @id @default(cuid())
+  email             String          @unique
+  password          String
+  name              String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  chatSessions      ChatSession[]
+  defaultChatbot    Chatbot?        @relation("DefaultChatbot", fields: [defaultChatbotId], references: [id])
+  defaultChatbotId  String?
+  chatbotAccesses   ChatbotAccess[]
+  aiUsages          AIUsage[]
+}
+
+model ChatSession {
+  id           String        @id @default(cuid())
+  title        String        @default("New Chat")
+  user         User          @relation(fields: [userId], references: [id])
+  userId       String
+  chatbotId    String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  chatMessages ChatMessage[]
+}
+
+model ChatMessage {
+  id            String      @id @default(cuid())
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
+  chatSessionId String
+  role          String
+  content       String
+  createdAt     DateTime    @default(now())
+}
+
+// Admin-related models
+model AdminUser {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  password   String
+  name       String?
+  role       String    @default("ARCHITECT")
+  company    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  chatbots   Chatbot[]
+  testUserId String?   @unique
+  aiUsages   AIUsage[]
+}
+
+// Shared models
+model Chatbot {
+  id                String          @id @default(cuid())
+  name              String
+  status            ChatbotStatus   @default(INACTIVE)
+  ownerId           String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  blocks            Block[]
+  connections       Connection[]
+  accesses          ChatbotAccess[]
+  websiteContexts   WebsiteContext[]
+  defaultForUsers   User[]          @relation("DefaultChatbot")
+  owner             AdminUser       @relation(fields: [ownerId], references: [id])
+  aiUsages          AIUsage[]
+}
+
+model WebsiteContext {
+  id                String    @id @default(cuid())
+  chatbot           Chatbot   @relation(fields: [chatbotId], references: [id])
+  chatbotId         String
+  blockId           String    @unique
+  url               String
+  recursive         Boolean   @default(false)
+  maxDepth          Int       @default(3)
+  crawlingStatus    Json?
+  lastCrawledAt     DateTime?
+  crawledPagesCount Int?
+  cronEnabled       Boolean   @default(false)
+  cronSchedule      String?   // Cron expression (e.g., "0 0 * * *" for daily at midnight)
+  cronTimezone      String?   @default("UTC") // Timezone for cron execution
+  nextCrawlAt       DateTime? // Next scheduled crawl time
+}
+
+model ChatbotAccess {
+  id         String   @id @default(cuid())
+  chatbot    Chatbot  @relation(fields: [chatbotId], references: [id])
+  chatbotId  String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  userEmail  String
+  assignedAt DateTime @default(now())
+
+  @@unique([chatbotId, userEmail])
+}
+
+model Block {
+  id              String       @id @default(cuid())
+  chatbot         Chatbot      @relation(fields: [chatbotId], references: [id])
+  chatbotId       String
+  type            BlockType
+  subtype         String
+  title           String
+  position        Json
+  properties      Json
+  fromConnections Connection[] @relation("FromConnections")
+  toConnections   Connection[] @relation("ToConnections")
+}
+
+model Connection {
+  id            String    @id @default(cuid())
+  chatbot       Chatbot   @relation(fields: [chatbotId], references: [id])
+  chatbotId     String
+  fromBlock     Block     @relation("FromConnections", fields: [fromBlockId], references: [id])
+  fromBlockId   String
+  toBlock       Block     @relation("ToConnections", fields: [toBlockId], references: [id])
+  toBlockId     String
+  fromDirection Direction
+  toDirection   Direction
+}
+
+model GlobalAIModel {
+  id              String   @id @default(cuid())
+  provider        String   // "openai", "gemini", "anthropic", "mistral", "custom_global"
+  modelId         String   // "gpt-4"
+  name            String   // "GPT-4"
+  description     String?  
+  icon            String?  // "openai", "gemini", etc.
+  
+  // Configuration
+  endpoint        String?  
+  apiKey          String?  // Optional encrypted key
+  
+  // Pricing
+  inputCostPer1M  Float    @default(0)
+  outputCostPer1M Float    @default(0)
+  
+  isVisible       Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  isDeprecated    Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  aiUsages        AIUsage[]
+  
+  @@unique([provider, modelId])
+}
+
+model AIUsage {
+  id            String   @id @default(cuid())
+  
+  // Who used it
+  adminUserId   String?
+  adminUser     AdminUser? @relation(fields: [adminUserId], references: [id])
+  userId        String?
+  user          User?      @relation(fields: [userId], references: [id])
+  
+  // What was used
+  modelId       String
+  globalAIModel GlobalAIModel @relation(fields: [modelId], references: [id])
+  
+  // Context
+  chatbotId     String?
+  chatbot       Chatbot?   @relation(fields: [chatbotId], references: [id])
+  
+  action        String   // "CHAT", "CRAWL_SUMMARY"
+  
+  // Usage
+  inputTokens   Int
+  outputTokens  Int
+  totalTokens   Int
+  cost          Float    
+  
+  timestamp     DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([timestamp])
+  @@index([modelId])
+}
+
+// Enums
+enum ChatbotStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum BlockType {
+  CONTEXT
+  LOGIC
+  ACTION
+  FRONTEND
+  TEST
+}
+
+enum Direction {
+  LEFT
+  RIGHT
+  TOP
+  BOTTOM
+}

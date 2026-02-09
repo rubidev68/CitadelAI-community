@@ -1,0 +1,395 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User-related models
+model User {
+  id                String          @id @default(cuid())
+  email             String          @unique
+  password          String
+  name              String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  chatSessions      ChatSession[]
+  defaultChatbot    Chatbot?        @relation("DefaultChatbot", fields: [defaultChatbotId], references: [id])
+  defaultChatbotId  String?
+  chatbotAccesses   ChatbotAccess[]
+  oauthConnections  UserOAuthConnection[]
+  calendarActionLogs CalendarActionLog[]
+}
+
+model ChatSession {
+  id           String        @id @default(cuid())
+  title        String        @default("New Chat")
+  user         User          @relation(fields: [userId], references: [id])
+  userId       String
+  chatbotId    String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  chatMessages ChatMessage[]
+}
+
+model ChatMessage {
+  id            String      @id @default(cuid())
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
+  chatSessionId String
+  role          String
+  content       String
+  createdAt     DateTime    @default(now())
+}
+
+// Admin-related models
+model AdminUser {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  password   String
+  name       String?
+  role       String    @default("ARCHITECT")
+  company    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  chatbots   Chatbot[]
+  testUserId String?   @unique
+  subscription Subscription?
+  aiCalls    AICall[]
+  customProviders CustomProvider[]
+}
+
+// Shared models
+model Chatbot {
+  id                String          @id @default(cuid())
+  name              String
+  status            ChatbotStatus   @default(INACTIVE)
+  ownerId           String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  blocks            Block[]
+  connections       Connection[]
+  accesses          ChatbotAccess[]
+  websiteContexts   WebsiteContext[]
+  defaultForUsers   User[]          @relation("DefaultChatbot")
+  owner             AdminUser       @relation(fields: [ownerId], references: [id])
+  apiTokens         ApiToken[]
+  aiCalls           AICall[]
+  oauthConnections  UserOAuthConnection[]
+  calendarActionLogs CalendarActionLog[]
+}
+
+model WebsiteContext {
+  id                String    @id @default(cuid())
+  chatbot           Chatbot   @relation(fields: [chatbotId], references: [id])
+  chatbotId         String
+  blockId           String    @unique
+  url               String
+  recursive         Boolean   @default(false)
+  maxDepth          Int       @default(3)
+  crawlingStatus    Json?
+  lastCrawledAt     DateTime?
+  crawledPagesCount Int?
+}
+
+model ChatbotAccess {
+  id         String   @id @default(cuid())
+  chatbot    Chatbot  @relation(fields: [chatbotId], references: [id])
+  chatbotId  String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  userEmail  String
+  assignedAt DateTime @default(now())
+
+  @@unique([chatbotId, userEmail])
+}
+
+model Block {
+  id              String       @id @default(cuid())
+  chatbot         Chatbot      @relation(fields: [chatbotId], references: [id])
+  chatbotId       String
+  type            BlockType
+  subtype         String
+  title           String
+  position        Json
+  properties      Json
+  fromConnections Connection[] @relation("FromConnections")
+  toConnections   Connection[] @relation("ToConnections")
+  apiTokens       ApiToken[]
+  oauthConnections UserOAuthConnection[]
+  calendarActionLogs CalendarActionLog[]
+}
+
+model Connection {
+  id            String    @id @default(cuid())
+  chatbot       Chatbot   @relation(fields: [chatbotId], references: [id])
+  chatbotId     String
+  fromBlock     Block     @relation("FromConnections", fields: [fromBlockId], references: [id])
+  fromBlockId   String
+  toBlock       Block     @relation("ToConnections", fields: [toBlockId], references: [id])
+  toBlockId     String
+  fromDirection Direction
+  toDirection   Direction
+}
+
+// Enums
+enum ChatbotStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum BlockType {
+  CONTEXT
+  LOGIC
+  ACTION
+  FRONTEND
+  TEST
+}
+
+enum Direction {
+  LEFT
+  RIGHT
+  TOP
+  BOTTOM
+}
+
+// API Token model for chatbot API access
+model ApiToken {
+  id            String       @id @default(cuid())
+  chatbot       Chatbot      @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  chatbotId     String
+  block         Block?       @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  blockId       String?      // Link to API block (multiple tokens can be linked to same block)
+  name          String       // User-friendly token name
+  token         String       @unique // Hashed token value
+  tokenPrefix   String       // First 8 chars for display (e.g., "cat_xxxx")
+  
+  // Token type and limits
+  tokenType     ApiTokenType @default(DURATION)
+  expiresAt     DateTime?    // For DURATION type tokens
+  maxUsage      Int?         // For USAGE type tokens
+  currentUsage  Int          @default(0) // Current request count
+  
+  // Status
+  isActive      Boolean      @default(true)
+  lastUsedAt    DateTime?
+  
+  // Rate limiting
+  rateLimitPerMinute Int?     // Per-token rate limit override (requests per minute)
+  
+  // Revocation
+  revokedAt     DateTime?    // When token was revoked
+  revokedBy     String?      // User ID who revoked the token
+  revocationReason String?   // Reason for revocation
+  scheduledRevocationAt DateTime? // Scheduled revocation time (for future revocation)
+  
+  // Metadata
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  createdBy     String       // Admin user ID who created the token
+  
+  @@index([chatbotId])
+  @@index([blockId])
+  @@index([token])
+  @@index([isActive])
+  @@index([revokedAt])
+  @@index([scheduledRevocationAt])
+  
+  usageLogs     TokenUsageLog[]
+}
+
+model TokenUsageLog {
+  id            String   @id @default(cuid())
+  token         ApiToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  tokenId       String
+  endpoint      String   // API endpoint path (e.g., "/api/user/chat/:chatbotId")
+  requestMethod String   // HTTP method (GET, POST, etc.)
+  ipAddress     String?  // Client IP address
+  statusCode    Int      // HTTP status code
+  responseTime  Int?     // Response time in milliseconds
+  timestamp     DateTime @default(now())
+  
+  @@index([tokenId])
+  @@index([timestamp])
+  @@index([tokenId, timestamp])
+  @@index([endpoint])
+}
+
+enum ApiTokenType {
+  DURATION  // Token expires after a specific date
+  USAGE     // Token expires after N requests
+  PERMANENT // Token never expires (admin-only)
+}
+
+// Subscription models
+model Subscription {
+  id                 String             @id @default(cuid())
+  adminUser          AdminUser          @relation(fields: [adminUserId], references: [id])
+  adminUserId        String             @unique
+  plan               SubscriptionPlan   @relation(fields: [planId], references: [id])
+  planId             String
+  status             SubscriptionStatus @default(TRIAL)
+  trialStartDate     DateTime?
+  trialEndDate       DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  canceledAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  // Stripe integration fields
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  stripePaymentLinkId  String?
+  paymentMethodId      String?
+  lastPaymentDate      DateTime?
+  nextPaymentDate      DateTime?
+}
+
+model SubscriptionPlan {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  price       Float
+  currency    String   @default("USD")
+  interval    String   @default("month")
+  maxChatbots Int?
+  maxUsers    Int?
+  maxMessages Int?
+  maxPages    Int?
+  maxConcurrentSessions Int?
+  features    Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Stripe integration
+  stripeProductId String? @unique
+  stripePriceId   String? @unique
+
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  INCOMPLETE
+}
+
+// AI Call tracking model
+model AICall {
+  id        String   @id @default(cuid())
+  chatbotId String
+  chatbot   Chatbot  @relation(fields: [chatbotId], references: [id])
+  adminUserId String
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+  createdAt DateTime @default(now())
+  
+  // Track which type of call this was
+  callType String   @default("MESSAGE") // MESSAGE, TESTLLM, FOLLOWUP
+  
+  @@index([adminUserId, createdAt])
+  @@index([chatbotId])
+}
+
+// User OAuth Connection model for user-specific blocks (Email, Calendar, CRM)
+model UserOAuthConnection {
+  id              String   @id @default(cuid())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  
+  // Link to block (which block requires this connection)
+  chatbot         Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  chatbotId       String
+  block           Block?   @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  blockId         String?  // Optional: specific block, or null for provider-level
+  
+  // Provider Information
+  provider        OAuthProvider // 'GOOGLE_CALENDAR' | 'OUTLOOK_CALENDAR' | 'CALDAV' | 'GMAIL' | 'OUTLOOK_EMAIL' | etc.
+  providerAccountId String? // Provider-specific account ID (e.g., email address)
+  providerAccountName String? // Human-readable account name
+  
+  // OAuth Credentials (encrypted)
+  accessToken     String   // Encrypted OAuth access token (or CalDAV credentials)
+  refreshToken    String?  // Encrypted refresh token (if supported, null for CalDAV)
+  expiresAt       DateTime? // Token expiration time (null for CalDAV Basic Auth)
+  instanceUrl     String?  // Salesforce instance URL (Salesforce-specific)
+  
+  // Status
+  isActive        Boolean  @default(true)
+  connectedAt     DateTime @default(now())
+  lastUsedAt      DateTime?
+  
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, chatbotId, blockId, provider]) // One connection per user/chatbot/block/provider
+  @@index([userId])
+  @@index([chatbotId])
+  @@index([blockId])
+  @@index([provider])
+  @@index([isActive])
+}
+
+enum OAuthProvider {
+  // Email Providers
+  GMAIL
+  OUTLOOK_EMAIL
+  
+  // Calendar Providers
+  GOOGLE_CALENDAR
+  OUTLOOK_CALENDAR
+  CALDAV
+  
+  // CRM Providers
+  SALESFORCE
+  HUBSPOT
+  PIPEDRIVE
+}
+
+// Calendar Action Log for audit trail
+model CalendarActionLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatbotId   String
+  chatbot     Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  blockId     String
+  block       Block    @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  action      String   // 'create' | 'update' | 'delete'
+  eventId     String?  // Calendar event ID (if available)
+  eventDetails Json    // Event details (summary, start, end, location, attendees, etc.)
+  success     Boolean
+  error       String?
+  timestamp   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([chatbotId])
+  @@index([blockId])
+  @@index([timestamp])
+  @@index([userId, timestamp])
+}
+
+// Custom AI Provider model for storing custom provider configurations
+model CustomProvider {
+  id          String    @id @default(cuid())
+  name        String    // User-friendly name for the provider
+  ownerId     String    // Admin user who created this provider
+  owner       AdminUser @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  baseUrl     String    // Base URL for the API (e.g., https://api.example.com)
+  apiToken    String    // Encrypted API token
+  modelName   String    // Model name to use (e.g., "gpt-4", "custom-model-v1")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([ownerId])
+  @@index([isActive])
+}

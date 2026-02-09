@@ -1,0 +1,36 @@
+{
+  "name": "cron-scheduler",
+  "version": "1.0.0",
+  "description": "Cron scheduler service for CitadelAI website crawling - Built to help not to replace",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.1",
+    "@shared/config": "file:../shared/config",
+    "@shared/middleware": "file:../shared/middleware",
+    "@shared/utils": "file:../shared/utils",
+    "axios": "^1.6.2",
+    "cors": "^2.8.5",
+    "cron-parser": "^4.9.0",
+    "express": "^4.18.2",
+    "helmet": "^8.0.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "7.0.13",
+    "prisma": "^5.7.1",
+    "vite": "7.3.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.5",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "source_dir": ".",
+  "destination_dir": "community-version",
+  "sync": {
+    "excludes": [
+      ".git", "node_modules", "dist", ".env", ".env.test",
+      "business_website", "superadmin-dashboard", "email-service",
+      "community-version", "archive", "backups", "logs", "terraform",
+      "bubble", "key", "ssl", "prod.env", "prod.env.template",
+      "docker-compose.prod.yml", "docker-compose.hetzner.yml",
+      "nginx-proxy.conf", "Caddyfile",
+      "MIGRATION_GUIDE_BUSINESS_TO_COMMUNITY.md", "migrate_to_community.sh",
+      "scripts/__pycache__", ".DS_Store",
+      "docs-website"
+    ]
+  },
+  "publishing": {
+    "git": {
+      "remote": "git@github.com:rubidev68/CitadelAI-community.git",
+      "branch": "main",
+      "user_name": "CitadelAI Bot",
+      "user_email": "bot@citadelai.app"
+    },
+    "docker": {
+      "registry": "ghcr.io/rubidev68"
+    }
+  },
+  "deletions": [
+    "admin/backend/src/routes/business.ts",
+    "docs-website",
+    "admin/backend/src/services/cloudProviders/googleDriveProvider.ts",
+    "admin/backend/src/services/cloudProviders/oneDriveProvider.ts",
+    "admin/backend/src/services/slackMessageProcessor.ts",
+    "admin/backend/src/services/slackWebhookService.ts",
+    "admin/backend/src/services/slackApiClient.ts",
+    "admin/backend/src/services/slackOAuthService.ts",
+    "admin/backend/src/routes/slack",
+    "admin/backend/src/routes/slack.ts",
+    "admin/backend/src/services/stripeService.ts",
+    "admin/backend/src/routes/stripeWebhook.ts",
+    "admin/backend/src/routes/paymentLinks.ts",
+    "admin/backend/src/routes/subscription.ts",
+    "admin/backend/src/controllers/stripe",
+    "admin/backend/src/controllers/subscription",
+    "documentation/BUSINESS_EDITION.md",
+    "documentation/COMMUNITY_EDITION.md",
+    "documentation/EDITION_COMPARISON.md",
+    "documentation/instance_provisioning_service.md",
+    "documentation/email_service.md",
+    "documentation/GOOGLE_DRIVE_OAUTH_SETUP.md",
+    "documentation/ONEDRIVE_OAUTH_SETUP.md",
+    "documentation/SLACK_*.md",
+    "documentation/SLACK_*.json",
+    ".github/workflows/business-wiki-update.yml",
+    ".github/workflows/update-wiki.yml",
+    ".github/copilot-instructions.md",
+    "admin/backend/src/__tests__/services/stripeService.test.ts",
+    "admin/backend/src/__tests__/routes/stripeWebhook.test.ts",
+    "admin/backend/src/__tests__/services/slackApiClient.test.ts",
+    "admin/backend/src/__tests__/services/slackWebhookService.test.ts",
+    "admin/backend/src/__tests__/services/slackOAuthService.test.ts",
+    "admin/backend/src/__tests__/services/slackMessageProcessor.test.ts",
+    "admin/backend/src/__tests__/routes/slack.test.ts",
+    "user/backend/src/services/cloudProviders/googleDriveProvider.ts",
+    "user/backend/src/services/calendarProviders/googleCalendarProvider.ts",
+    "admin/backend/src/routes/billing.ts",
+    "admin/backend/src/services/subscriptionUsageCache.ts",
+    "admin/backend/src/services/BusinessSubscriptionService.ts",
+    "admin/backend/src/services/BusinessNotificationService.ts"
+  ],
+  "patches": [
+    { "script": "scripts/patch_auth.py", "description": "Patch Auth Backend" },
+    { "script": "scripts/patch_providers.py", "description": "Patch Provider Factory" },
+    { "script": "scripts/patch_db_migration.py", "description": "Patch DB Migration" },
+    { "script": "scripts/patch_frontend.py", "description": "Patch Frontend" },
+    { "script": "scripts/patch_admin_port.py", "description": "Patch Admin Port" },
+    { "script": "scripts/patch_registration_flow.py", "description": "Patch Registration Flow" },
+    { "script": "scripts/patch_backend_cleanup.py", "description": "Cleanup Backend" },
+    { "script": "scripts/patch_feature_flags.py", "description": "Patch Feature Flags" },
+    { "script": "scripts/patch_fix_final.py", "description": "Final Cleanups" },
+    { "script": "scripts/patch_cloud_properties.py", "description": "Patch Cloud Properties" },
+    { "script": "scripts/patch_calendar_properties.py", "description": "Patch Calendar Properties" },
+    { "script": "scripts/patch_force_step2_skip.py", "description": "Force Step 2 Skip" },
+    { "script": "scripts/patch_dockerfile_lint.py", "description": "Remove Lint from Dockerfile" },
+    { "script": "scripts/patch_block_palette_categories.py", "description": "Patch Block Palette" },
+    { "script": "scripts/patch_dockerfiles_node_version.py", "description": "Upgrade Node Version" },
+    { "script": "scripts/patch_crawling_service_weaviate_client.py", "description": "Patch Weaviate Client" },
+    { "script": "scripts/patch_dynamic_models.py", "description": "Patch Dynamic Models" }
+  ],
+  "inline_patches": [
+    {
+      "file": "admin/backend/src/routes/profile/index.ts",
+      "description": "Remove Stripe import from profile",
+      "replacements": [
+        { "pattern": "import\\s+\\{\\s*stripe\\s*\\}\\s+from\\s+['\"].*?/stripeService['\"];\\n?", "replacement": "" },
+        { "pattern": "\\s+// Step 8: Cancel and delete subscription[\\s\\S]+?// Step 9:", "replacement": "\n      // Step 8: Skipped (Community Edition)\n\n      // Step 9:" }
+      ]
+    },
+    {
+        "file": "admin/interface/Dockerfile",
+        "description": "Disable lint in Dockerfile",
+        "replacements": [
+            { "pattern": "RUN npm run lint", "replacement": "# RUN npm run lint" }
+        ]
+    },
+    {
+        "file": "admin/backend/package.json",
+        "description": "Remove Stripe dependency",
+        "replacements": [
+            { "pattern": "\\s*\"stripe\":\\s*\"\\^14\\.21\\.0\",", "replacement": "" }
+        ]
+    },
+    {
+        "file": "user/backend/src/services/cloudProviders/providerFactory.ts",
+        "description": "Remove Google Drive Provider",
+        "replacements": [
+            { "pattern": "import { GoogleDriveProvider } from './googleDriveProvider';", "replacement": "" },
+            { "pattern": "case 'googledrive':\\s+return new GoogleDriveProvider\\(config\\);", "replacement": "case 'googledrive':\\n      throw new Error('Google Drive integration not available in Community Edition');" }
+        ]
+    },
+    {
+        "file": "admin/backend/src/middleware/subscriptionMiddleware.ts",
+        "description": "Disable Subscription Middleware",
+        "replacements": [
+            {
+                "pattern": "\\A[\\s\\S]*\\Z",
+                "replacement": "import { Request, Response, NextFunction } from 'express';\n\n// No-Op Middleware for Community Edition\nexport const requireActiveSubscription = async (req: Request, res: Response, next: NextFunction) => next();\nexport const checkChatbotLimit = async (req: Request, res: Response, next: NextFunction) => next();\nexport const checkUserAccessLimit = async (req: Request, res: Response, next: NextFunction) => next();\nexport const checkMessageLimit = async (req: Request, res: Response, next: NextFunction) => next();\nexport const checkIndexedPagesLimit = async (req: Request, res: Response, next: NextFunction) => next();\nexport const addSubscriptionInfo = async (req: Request, res: Response, next: NextFunction) => next();\n"
+            }
+        ]
+    },
+    {
+        "file": "admin/backend/src/services/serviceFactory.ts",
+        "description": "Use Community Services only",
+        "replacements": [
+            { "pattern": "import { BusinessSubscriptionService } from './BusinessSubscriptionService';", "replacement": "" },
+            { "pattern": "import { BusinessNotificationService } from './BusinessNotificationService';", "replacement": "" },
+            { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*subscriptionServiceInstance = new BusinessSubscriptionService\\(\\);\\s*\\} else \\{\\s*subscriptionServiceInstance = new CommunitySubscriptionService\\(\\);\\s*\\}", "replacement": "subscriptionServiceInstance = new CommunitySubscriptionService();" },
+            { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*notificationServiceInstance = new BusinessNotificationService\\(\\);\\s*\\} else \\{\\s*notificationServiceInstance = new CommunityNotificationService\\(\\);\\s*\\}", "replacement": "notificationServiceInstance = new CommunityNotificationService();" }
+        ]
+    },
+    {
+        "file": "user/backend/src/services/calendarProviders/providerFactory.ts",
+        "description": "Remove Google Calendar Provider",
+        "replacements": [
+            { "pattern": "import { GoogleCalendarProvider } from './googleCalendarProvider';", "replacement": "" },
+            { "pattern": "case 'google_calendar':\\s+return new GoogleCalendarProvider\\(\\);", "replacement": "case 'google_calendar':\\n      throw new Error('Google Calendar integration not available in Community Edition');" }
+        ]
+    }
+  ],
+  "documentation": {
+    "clean_markdown_root": true,
+    "keep_root": ["README.md", "CONTRIBUTING.md"],
+    "clean_docs_dir": true,
+    "replacements": [
+        { "pattern": "Instance Provisioning", "replacement": "" },
+        { "pattern": "Email Service", "replacement": "" },
+        { "pattern": "Business Website", "replacement": "" },
+        { "pattern": "Superadmin", "replacement": "" },
+        { "pattern": "Stripe", "replacement": "" },
+        { "pattern": "Billing", "replacement": "" },
+        { "pattern": "Hetzner", "replacement": "" },
+        { "pattern": "Zoho", "replacement": "" },
+        { "pattern": "AdminJS", "replacement": "" },
+        { "pattern": "Port 3007", "replacement": "" },
+        { "pattern": "Port 3008", "replacement": "" },
+        { "pattern": "Port 8083", "replacement": "" }
+    ]
+  },
+  "post_process": {
+    "clean_scripts_dir": true,
+    "allowed_scripts": ["view-logs.sh", "view-logs.js", "README_LOGS.md"]
+  }
+}

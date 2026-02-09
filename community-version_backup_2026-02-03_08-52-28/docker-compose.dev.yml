@@ -1,0 +1,246 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-citadel}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  redis:
+    image: redis:alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  weaviate:
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --scheme
+      - http
+    image: semitechnologies/weaviate:1.24.1
+    ports:
+      - 8080:8080
+      - 50051:50051
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: 'text2vec-openai,text2vec-cohere,text2vec-huggingface,generative-openai'
+      CLUSTER_HOSTNAME: 'node1'
+      OPENAI_APIKEY: \${OPENAI_API_KEY}
+    networks:
+      - app-network
+
+  db-migration-service:
+    image: ghcr.io/rubidev68/citadelai-community/db-migration-service:${VERSION_TAG:-latest}
+    build:
+      context: .
+      dockerfile: db-migration-service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-citadel}?schema=public
+      - MIGRATION_ORDER=admin,user,cron,crawling
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  admin-backend:
+    image: ghcr.io/rubidev68/citadelai-community/admin-backend:${VERSION_TAG:-latest}
+    build:
+      context: .
+      dockerfile: admin/backend/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_HOST=postgres
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-citadel}?schema=public
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-citadel}
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_HOST=weaviate:8080
+      - WEAVIATE_SCHEME=http
+      - EDITION=community
+      - VERSION_TYPE=opensource
+      - FEATURE_BILLING=false
+      - FEATURE_ENTERPRISE=false
+      - FEATURE_ADVANCED_ANALYTICS=false
+      - FEATURE_PREMIUM_AI_MODELS=false
+      - FEATURE_ADMINJS_DASHBOARD=false
+      - JWT_SECRET=${JWT_SECRET:-change_me_in_production_min_32_chars_long}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - SUPERADMIN_JWT_SECRET=${SUPERADMIN_JWT_SECRET:-community_superadmin_jwt_secret_placeholder_32ch}
+      - ADMINJS_SESSION_SECRET=${ADMINJS_SESSION_SECRET:-community_adminjs_session_secret_placeholder}
+      - ADMINJS_COOKIE_SECRET=${ADMINJS_COOKIE_SECRET:-community_adminjs_cookie_secret_placeholder}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-community_internal_service_token_placeholder}
+      - SLACK_ENCRYPTION_KEY=${SLACK_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - FRONTEND_URL=http://localhost:3000
+      - USER_FRONTEND_URL=http://localhost:4000
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      weaviate:
+        condition: service_started
+      db-migration-service:
+        condition: service_completed_successfully
+    ports:
+      - "3001:3001"
+    networks:
+      - app-network
+
+  user-backend:
+    image: ghcr.io/rubidev68/citadelai-community/user-backend:${VERSION_TAG:-latest}
+    build:
+      context: .
+      dockerfile: user/backend/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - DB_HOST=postgres
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-citadel}?schema=public
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-citadel}
+      - CRAWLING_SERVICE_URL=http://crawling-service:3001
+      - EDITION=community
+      - VERSION_TYPE=opensource
+      - FRONTEND_URL=http://localhost:3000
+      - USER_FRONTEND_URL=http://localhost:4000
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:4000
+      - JWT_SECRET=${JWT_SECRET:-change_me_in_production_min_32_chars_long}
+      - SUPERADMIN_JWT_SECRET=${SUPERADMIN_JWT_SECRET:-community_superadmin_jwt_secret_placeholder_32ch}
+      - ADMINJS_SESSION_SECRET=${ADMINJS_SESSION_SECRET:-community_adminjs_session_secret_placeholder}
+      - ADMINJS_COOKIE_SECRET=${ADMINJS_COOKIE_SECRET:-community_adminjs_cookie_secret_placeholder}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-community_internal_service_token_placeholder}
+      - SLACK_ENCRYPTION_KEY=${SLACK_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      crawling-service:
+        condition: service_started
+      db-migration-service:
+        condition: service_completed_successfully
+    ports:
+      - "3002:3002"
+    networks:
+      - app-network
+
+  crawling-service:
+    image: ghcr.io/rubidev68/citadelai-community/crawling-service:${VERSION_TAG:-latest}
+    build:
+      context: .
+      dockerfile: crawling-service/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - WEAVIATE_SCHEME=http
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-citadel}?schema=public
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      redis:
+        condition: service_started
+      weaviate:
+        condition: service_started
+      db-migration-service:
+        condition: service_completed_successfully
+    ports:
+      - "3003:3001"
+    networks:
+      - app-network
+
+  cron-scheduler:
+    image: ghcr.io/rubidev68/citadelai-community/cron-scheduler:${VERSION_TAG:-latest}
+    build:
+      context: .
+      dockerfile: cron-scheduler/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-citadel}?schema=public
+      - CRAWLING_SERVICE_URL=http://crawling-service:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      crawling-service:
+        condition: service_started
+      db-migration-service:
+        condition: service_completed_successfully
+    networks:
+      - app-network
+
+  admin-frontend:
+    image: ghcr.io/rubidev68/citadelai-community/admin-frontend:${VERSION_TAG:-latest}
+    build:
+      context: ./admin/interface
+      dockerfile: Dockerfile
+      args:
+        - VITE_VERSION_TYPE=opensource
+        - VITE_FEATURE_BILLING=false
+        - VITE_FEATURE_ENTERPRISE=false
+        - VITE_FEATURE_ADVANCED_ANALYTICS=false
+        - VITE_FEATURE_PREMIUM_AI_MODELS=false
+        - VITE_FEATURE_ADMINJS_DASHBOARD=false
+        - VITE_ADMIN_API_URL=http://localhost:3001/api/admin
+        - VITE_USER_API_URL=http://localhost:3002/api
+        - VITE_API_URL=http://localhost:3001
+        - VITE_USER_INTERFACE_URL=http://localhost:4000
+    ports:
+      - "3000:80"
+    environment:
+      - ADMIN_API_URL=http://localhost:3001/api/admin
+      - USER_API_URL=http://localhost:3002/api
+      - USER_INTERFACE_URL=http://localhost:4000
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - VERSION_TYPE=opensource
+      - FEATURE_BILLING=false
+      - FEATURE_ENTERPRISE=false
+      - FEATURE_ADVANCED_ANALYTICS=false
+      - FEATURE_PREMIUM_AI_MODELS=false
+      - FEATURE_ADMINJS_DASHBOARD=false
+    networks:
+      - app-network
+
+  user-frontend:
+    image: ghcr.io/rubidev68/citadelai-community/user-frontend:${VERSION_TAG:-latest}
+    build:
+      context: ./user/interface
+      dockerfile: Dockerfile
+    ports:
+      - "4000:80"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3002
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  weaviate_data:

@@ -1,0 +1,70 @@
+async deleteEvent(
+    accessToken: string,
+    calendarId: string,
+    eventId: string
+  ): Promise<void> {
+    // If config is already set, use it; otherwise parse from accessToken
+    if (!this.config) {
+      const { username, password, serverUrl } = this.parseCalDAVCredentials(accessToken);
+      this.setConfig({
+        serverUrl,
+        username,
+        password,
+        calendarPath: calendarId,
+      });
+    } else {
+      this.config.calendarPath = calendarId;
+    }
+    
+    // Get the event to retrieve its href (file path)
+    const event = await this.getEvent(accessToken, calendarId, eventId);
+    
+    // Use the href from htmlLink if available, otherwise fall back to constructing it
+    let eventUrl: string;
+    if (event.htmlLink) {
+      // htmlLink contains the full path from the CalDAV response
+      // It might be absolute or relative, so we need to handle both cases
+      if (event.htmlLink.startsWith('http://') || event.htmlLink.startsWith('https://')) {
+        // Absolute URL - extract just the path
+        try {
+          const urlObj = new URL(event.htmlLink);
+          eventUrl = urlObj.pathname;
+        } catch {
+          // If URL parsing fails, try to extract path manually
+          const match = event.htmlLink.match(/https?:\/\/[^\/]+(\/.*)/);
+          eventUrl = match ? match[1] : event.htmlLink;
+        }
+      } else {
+        // Relative path - use as-is
+        eventUrl = event.htmlLink.startsWith('/') ? event.htmlLink : `/${event.htmlLink}`;
+      }
+    } else {
+      // Fallback: construct URL (may not work if filename doesn't match UID)
+      const calendarPath = this.getCalendarPath(calendarId);
+      eventUrl = `${calendarPath}${eventId}.ics`;
+    }
+    
+    const client = this.getCalDAVClient();
+    
+    // Remove leading slash if baseURL already ends with slash
+    const baseURL = client.defaults.baseURL || '';
+    if (baseURL.endsWith('/') && eventUrl.startsWith('/')) {
+      eventUrl = eventUrl.substring(1);
+    }
+    
+    try {
+      await client.delete(eventUrl);
+    } catch (error: unknown) {
+      interface CalDAVError {
+        response?: {
+          status?: number;
+        };
+      }
+      const caldavError = error as CalDAVError;
+      if (caldavError.response?.status === 404) {
+        // Already deleted, ignore
+        return;
+      }
+      throw error;
+    }
+  }

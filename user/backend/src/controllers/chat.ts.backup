@@ -1,0 +1,558 @@
+import { Response } from 'express';
+import { PrismaClient, BlockType } from '@prisma/client';
+import { AuthRequest } from '../middleware/auth';
+import { generateResponse, generateStreamingResponse } from '../services/gemini';
+import { generateFollowUps } from '../services/followUpGenerator';
+import weaviate from 'weaviate-ts-client';
+
+const client = weaviate.client({
+  scheme: 'http',
+  host: 'weaviate:8080',
+});
+
+const prisma = new PrismaClient();
+
+// Helper function to format citations
+const formatCitations = (sources: any[]) => {
+  if (!sources || sources.length === 0) {
+    return '';
+  }
+
+  const citations = sources.map((source, index) => {
+    const citationNumber = index + 1;
+    if (source.type === 'website') {
+      return `${citationNumber}. [${source.title}](${source.url})`;
+    } else if (source.type === 'document') {
+      return `${citationNumber}. ${source.title}`;
+    }
+    return `${citationNumber}. ${source.title || 'Unknown source'}`;
+  });
+
+  return `\n\n**Sources:**\n${citations.join('\n')}`;
+};
+
+// Helper function to get context from both website and document content with source tracking
+const getContextFromWeaviate = async (message: string, chatbotId: string) => {
+  try {
+    // Get website content with source metadata
+    const websiteResponse = await client.graphql
+      .get()
+      .withClassName('WebsiteContent')
+      .withFields('content url')
+      .withNearText({ concepts: [message] })
+      .withLimit(2)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    // Get document content with source metadata
+    const documentResponse = await client.graphql
+      .get()
+      .withClassName('DocumentContent')
+      .withFields('content type chunkIndex totalChunks processedAt')
+      .withNearText({ concepts: [message] })
+      .withLimit(2)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    // Process website context with sources
+    const websiteContext = websiteResponse.data.Get.WebsiteContent?.map((item: any) => ({
+      content: item.content,
+      source: {
+        type: 'website',
+        url: item.url,
+        title: new URL(item.url).hostname
+      }
+    })) || [];
+
+    // Process document context with sources
+    const documentContext = documentResponse.data.Get.DocumentContent?.map((item: any) => ({
+      content: item.content,
+      source: {
+        type: 'document',
+        chunkIndex: item.chunkIndex,
+        totalChunks: item.totalChunks,
+        processedAt: item.processedAt,
+        title: `Document (Part ${item.chunkIndex + 1} of ${item.totalChunks})`
+      }
+    })) || [];
+    
+    const allContext = [...websiteContext, ...documentContext];
+    return {
+      context: allContext.map(item => item.content).join('\n\n'),
+      sources: allContext.map(item => item.source)
+    };
+  } catch (error) {
+    console.error('Error retrieving context from Weaviate:', error);
+    return { context: '', sources: [] };
+  }
+};
+
+export const respond = async (req: AuthRequest, res: Response) => {
+  const { message, chatSessionId } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    const chatbotId = user?.defaultChatbotId || 'clwz1624m000050u6p141b1a1'; // Fallback to a public chatbot
+
+    // 1. Create or get chat session
+    let chatSession;
+    if (chatSessionId) {
+      chatSession = await prisma.chatSession.findUnique({ where: { id: chatSessionId } });
+    }
+    
+    if (!chatSession) {
+      chatSession = await prisma.chatSession.create({
+        data: {
+          userId,
+          chatbotId,
+        },
+      });
+    }
+
+    // 2. Save user message
+    await prisma.chatMessage.create({
+      data: {
+        chatSessionId: chatSession.id,
+        role: 'USER',
+        content: message,
+      },
+    });
+
+    // 3. Get chat history
+    const history = await prisma.chatMessage.findMany({
+      where: { chatSessionId: chatSession.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // 4. Get relevant context from Weaviate
+    const weaviateResponse = await client.graphql
+      .get()
+      .withClassName('WebsiteContent')
+      .withFields('content')
+      .withNearText({ concepts: [message] })
+      .withLimit(3)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    // Also get document content
+    const documentResponse = await client.graphql
+      .get()
+      .withClassName('DocumentContent')
+      .withFields('content')
+      .withNearText({ concepts: [message] })
+      .withLimit(2)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    const websiteContext = weaviateResponse.data.Get.WebsiteContent.map((item: any) => item.content);
+    const documentContext = documentResponse.data.Get.DocumentContent?.map((item: any) => item.content) || [];
+    const context = [...websiteContext, ...documentContext].join('\n\n');
+
+    // 5. Get system prompt
+    const systemPromptBlock = await prisma.block.findFirst({
+      where: {
+        chatbotId: chatbotId,
+        type: BlockType.LOGIC,
+        subtype: 'System Prompt',
+      },
+    });
+
+    const systemPrompt = String((systemPromptBlock?.properties as Record<string, unknown>)?.prompt || 'You are a helpful assistant.');
+
+    const systemPromptWithContext = `You are a helpful assistant. Use the following context to answer the user's question:\n\n${context}\n\n${systemPrompt}`;
+
+    // 6. Generate and save assistant response
+    const assistantResponse = await generateResponse(chatbotId, systemPromptWithContext, history, message);
+
+    const assistantMessage = await prisma.chatMessage.create({
+      data: {
+        chatSessionId: chatSession.id,
+        role: 'ASSISTANT',
+        content: assistantResponse,
+      },
+    });
+
+    // 7. Generate follow-up suggestions
+    console.log('🚀 Starting follow-up generation for regular response...');
+    const followUps = await generateFollowUps(
+      chatbotId,
+      systemPromptWithContext,
+      history,
+      message,
+      assistantResponse,
+      context
+    );
+    console.log('📋 Generated follow-ups for regular response:', followUps);
+
+    res.json({
+      message: assistantMessage.content,
+      followUps: followUps,
+      chatSessionId: chatSession.id,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const getHistory = async (req: AuthRequest, res: Response) => {
+  const { sessionId } = req.query;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const messages = await prisma.chatMessage.findMany({
+      where: {
+        chatSessionId: sessionId as string,
+        chatSession: {
+          userId,
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+    res.json(messages);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const getChatSessions = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const chatbotId = req.query.chatbotId as string;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const whereClause: any = {
+      userId,
+    };
+
+    // If chatbotId is provided, filter by it
+    if (chatbotId) {
+      whereClause.chatbotId = chatbotId;
+    }
+
+    const chatSessions = await prisma.chatSession.findMany({
+      where: whereClause,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    res.json(chatSessions);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const createChatSession = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const { chatbotId } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    // Use provided chatbotId or fallback to user's default chatbot
+    let finalChatbotId = chatbotId;
+    
+    if (!finalChatbotId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+      finalChatbotId = user?.defaultChatbotId || 'clwz1624m000050u6p141b1a1'; // Fallback to a public chatbot
+    }
+
+    const newChatSession = await prisma.chatSession.create({
+      data: {
+        userId,
+        chatbotId: finalChatbotId,
+        title: 'New Chat',
+      },
+    });
+    res.json(newChatSession);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const generateTitle = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const chatSession = await prisma.chatSession.findFirst({
+      where: {
+        id,
+        userId,
+      },
+      include: {
+        chatMessages: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (!chatSession || chatSession.chatMessages.length === 0) {
+      return res.status(404).json({ error: 'Chat session not found or no messages yet' });
+    }
+
+    const firstMessage = chatSession.chatMessages[0].content;
+    const systemPrompt = `Generate a short, descriptive title (5 words or less) for a conversation that starts with this message: "${firstMessage}". Return only the title text without any formatting, quotes, or special characters.`;
+    
+    const title = await generateResponse(chatSession.chatbotId, systemPrompt, [], firstMessage);
+
+    // Clean the title to ensure it's non-formatted
+    const cleanTitle = title
+      .replace(/"/g, '') // Remove quotes
+      .replace(/\*\*/g, '') // Remove bold formatting
+      .replace(/\*/g, '') // Remove italic formatting
+      .replace(/#/g, '') // Remove markdown headers
+      .replace(/`/g, '') // Remove code formatting
+      .replace(/\[|\]/g, '') // Remove brackets
+      .replace(/\(|\)/g, '') // Remove parentheses
+      .replace(/[^\w\s-]/g, '') // Remove special characters except word chars, spaces, and hyphens
+      .trim(); // Remove leading/trailing whitespace
+
+    const updatedChatSession = await prisma.chatSession.update({
+      where: {
+        id,
+      },
+      data: {
+        title: cleanTitle,
+      },
+    });
+
+    res.json(updatedChatSession);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const deleteChatSession = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await prisma.chatMessage.deleteMany({
+      where: {
+        chatSessionId: id,
+        chatSession: {
+          userId,
+        },
+      },
+    });
+
+    await prisma.chatSession.delete({
+      where: {
+        id,
+        userId,
+      },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const respondStreaming = async (req: AuthRequest, res: Response) => {
+  const { message, chatSessionId } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    if (!res.headersSent) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    const chatbotId = user?.defaultChatbotId || 'clwz1624m000050u6p141b1a1'; // Fallback to a public chatbot
+
+    // 1. Create or get chat session
+    let chatSession;
+    if (chatSessionId) {
+      chatSession = await prisma.chatSession.findUnique({ where: { id: chatSessionId } });
+    }
+    
+    if (!chatSession) {
+      chatSession = await prisma.chatSession.create({
+        data: {
+          userId,
+          chatbotId,
+        },
+      });
+    }
+
+    // 2. Save user message
+    await prisma.chatMessage.create({
+      data: {
+        chatSessionId: chatSession.id,
+        role: 'USER',
+        content: message,
+      },
+    });
+
+    // 3. Get chat history
+    const history = await prisma.chatMessage.findMany({
+      where: { chatSessionId: chatSession.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // 4. Get relevant context from Weaviate
+    const weaviateResponse = await client.graphql
+      .get()
+      .withClassName('WebsiteContent')
+      .withFields('content')
+      .withNearText({ concepts: [message] })
+      .withLimit(3)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    // Also get document content
+    const documentResponse = await client.graphql
+      .get()
+      .withClassName('DocumentContent')
+      .withFields('content')
+      .withNearText({ concepts: [message] })
+      .withLimit(2)
+      .withWhere({
+        operator: 'Equal',
+        path: ['chatbotId'],
+        valueString: chatbotId,
+      })
+      .do();
+
+    const websiteContext = weaviateResponse.data.Get.WebsiteContent.map((item: any) => item.content);
+    const documentContext = documentResponse.data.Get.DocumentContent?.map((item: any) => item.content) || [];
+    const context = [...websiteContext, ...documentContext].join('\n\n');
+
+    // 5. Get system prompt
+    const systemPromptBlock = await prisma.block.findFirst({
+      where: {
+        chatbotId: chatbotId,
+        type: BlockType.LOGIC,
+        subtype: 'System Prompt',
+      },
+    });
+
+    const systemPrompt = String((systemPromptBlock?.properties as Record<string, unknown>)?.prompt || 'You are a helpful assistant.');
+
+    const systemPromptWithContext = `You are a helpful assistant. Use the following context to answer the user's question:\n\n${context}\n\n${systemPrompt}`;
+
+    // 6. Generate streaming response
+    const assistantResponse = await generateStreamingResponse(chatbotId, systemPromptWithContext, history, message, res, chatSession.id);
+
+    // 7. Save the complete assistant response
+    await prisma.chatMessage.create({
+      data: {
+        chatSessionId: chatSession.id,
+        role: 'ASSISTANT',
+        content: assistantResponse,
+      },
+    });
+
+    // 8. Generate follow-up suggestions asynchronously
+    console.log('🚀 Starting follow-up generation for streaming response...');
+    generateFollowUps(
+      chatbotId,
+      systemPromptWithContext,
+      history,
+      message,
+      assistantResponse,
+      context
+    ).then(followUps => {
+      console.log('📋 Generated follow-ups for streaming response:', followUps);
+      // Send follow-ups as a separate event
+      const followUpEvent = `data: ${JSON.stringify({
+        type: 'followUps',
+        followUps: followUps
+      })}\n\n`;
+      console.log('📤 Sending follow-ups event:', followUpEvent);
+      res.write(followUpEvent);
+      console.log('📤 Sent follow-ups to client');
+      
+      // Close the response after sending follow-ups
+      res.end();
+    }).catch(error => {
+      console.error('❌ Error generating follow-ups:', error);
+      res.end();
+    });
+
+  } catch (error) {
+    console.error(error);
+    
+    // Only write error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.writeHead(500, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+      });
+    }
+    
+    res.write(`data: ${JSON.stringify({
+      type: 'error',
+      error: 'Something went wrong'
+    })}\n\n`);
+    res.end();
+  }
+};

@@ -1,0 +1,123 @@
+async updateEvent(
+    accessToken: string,
+    calendarId: string,
+    eventId: string,
+    updates: Partial<CreateEventOptions>
+  ): Promise<CalendarEvent> {
+    // Get existing event
+    const existing = await this.getEvent(accessToken, calendarId, eventId);
+    
+    logger.debug('Existing event retrieved', {
+      id: existing.id,
+      summary: existing.summary,
+      start: existing.start,
+      end: existing.end,
+      startDateTime: existing.start.dateTime || existing.start.date,
+      endDateTime: existing.end.dateTime || existing.end.date,
+      service: 'caldavProvider',
+    });
+    
+    // Parse start time if it's a string
+    let start = existing.start;
+    if (updates.start) {
+      logger.debug('Updating start time', {
+        updatesStart: updates.start,
+        existingStart: existing.start,
+        existingStartDateTime: existing.start.dateTime || existing.start.date,
+        service: 'caldavProvider',
+      });
+      
+      if (typeof updates.start === 'string') {
+        // Try to parse as time string and combine with existing date
+        const existingStartDateTime = existing.start.dateTime || existing.start.date;
+        if (existingStartDateTime) {
+          const newDateTime = this.timeStringToDateTime(updates.start, existingStartDateTime);
+          if (newDateTime) {
+            start = { dateTime: newDateTime, timeZone: existing.start.timeZone };
+            logger.debug('Start time updated', {
+              from: existingStartDateTime,
+              to: newDateTime,
+              service: 'caldavProvider',
+            });
+          } else {
+            logger.warn('Failed to parse start time string, trying ISO format', {
+              service: 'caldavProvider',
+            });
+            // If parsing fails, try to parse as ISO string
+            try {
+              const parsedDate = new Date(updates.start);
+              if (!isNaN(parsedDate.getTime())) {
+                start = { dateTime: parsedDate.toISOString(), timeZone: existing.start.timeZone };
+              }
+            } catch {
+              // Keep existing start if parsing fails
+              logger.warn('Failed to parse start time, keeping existing', {
+                service: 'caldavProvider',
+              });
+            }
+          }
+        } else {
+          logger.warn('No existing start datetime to combine with', {
+            service: 'caldavProvider',
+          });
+        }
+      } else {
+        start = updates.start;
+      }
+    }
+    
+    // Parse end time if it's a string
+    // If end time is not explicitly updated, keep the existing end time (don't preserve duration)
+    let end = existing.end;
+    if (updates.end) {
+      if (typeof updates.end === 'string') {
+        const existingEndDateTime = existing.end.dateTime || existing.end.date;
+        if (existingEndDateTime) {
+          const newDateTime = this.timeStringToDateTime(updates.end, existingEndDateTime);
+          if (newDateTime) {
+            end = { dateTime: newDateTime, timeZone: existing.end.timeZone };
+          } else {
+            try {
+              const parsedDate = new Date(updates.end);
+              if (!isNaN(parsedDate.getTime())) {
+                end = { dateTime: parsedDate.toISOString(), timeZone: existing.end.timeZone };
+              }
+            } catch {
+              // Keep existing end if parsing fails
+            }
+          }
+        }
+      } else {
+        end = updates.end;
+      }
+    }
+    // If end is not updated, it remains as existing.end (end time stays the same)
+    
+    // Merge updates
+    const updatedOptions: CreateEventOptions = {
+      calendarId,
+      summary: updates.summary || existing.summary,
+      description: updates.description !== undefined ? updates.description : existing.description,
+      location: updates.location !== undefined ? updates.location : existing.location,
+      start,
+      end,
+      attendees: updates.attendees || existing.attendees,
+      reminders: updates.reminders || existing.reminders,
+      recurrence: updates.recurrence || existing.recurrence,
+    };
+    
+    logger.debug('Final update options', {
+      summary: updatedOptions.summary,
+      start: updatedOptions.start,
+      end: updatedOptions.end,
+      originalStart: existing.start,
+      originalEnd: existing.end,
+      service: 'caldavProvider',
+    });
+    
+    // Delete old event
+    await this.deleteEvent(accessToken, calendarId, eventId);
+    
+    // Create updated event with the same UID to preserve event identity
+    return await this.createEvent(accessToken, updatedOptions, eventId);
+  }

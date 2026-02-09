@@ -1,0 +1,148 @@
+async searchEvents(
+    accessToken: string,
+    options: EventSearchOptions
+  ): Promise<CalendarEvent[]> {
+    // If config is already set, use it; otherwise parse from accessToken
+    if (!this.config) {
+      const { username, password, serverUrl } = this.parseCalDAVCredentials(accessToken);
+      this.setConfig({
+        serverUrl,
+        username,
+        password,
+        calendarPath: options.calendarId,
+      });
+    } else if (options.calendarId) {
+      // Update calendarPath if provided
+      this.config.calendarPath = options.calendarId;
+    }
+    
+    const client = this.getCalDAVClient();
+    
+    // Step 1: List all available calendars
+    const calendars = await this.listCalendars(accessToken);
+    
+    if (calendars.length === 0) {
+      return [];
+    }
+    
+    // Step 2: Search events in each calendar
+    const allEvents: CalendarEvent[] = [];
+    const timeMin = options.timeMin || new Date();
+    const timeMax = options.timeMax || this.addDays(new Date(), 30);
+    
+      for (const calendar of calendars) {
+        // Skip if a specific calendarId was requested and this isn't it
+        if (options.calendarId && calendar.id !== options.calendarId && calendar.id !== 'primary') {
+          continue;
+        }
+        
+        try {
+          // Convert absolute calendar path to relative path for the REPORT request
+          // calendar.id is like: /remote.php/dav/calendars/anatole.cnd/personal/
+          // baseURL is like: https://100.101.143.25/remote.php/dav/calendars/anatole.cnd/
+          // We need to extract just the relative part: personal/
+          let calendarPath = calendar.id;
+          
+          if (this.config && calendarPath.startsWith('/')) {
+            // Extract the base path from serverUrl
+            try {
+              const baseUrlObj = new URL(this.config.serverUrl);
+              let basePath = baseUrlObj.pathname;
+              
+              // Normalize paths (remove trailing slashes for comparison)
+              basePath = basePath.replace(/\/$/, '');
+              calendarPath = calendarPath.replace(/\/$/, '');
+              
+              // Remove base path from calendar path
+              if (calendarPath.startsWith(basePath)) {
+                calendarPath = calendarPath.substring(basePath.length);
+                // Remove leading slash
+                calendarPath = calendarPath.replace(/^\//, '');
+              } else {
+                // Try to find common prefix by comparing path segments
+                const baseParts = basePath.split('/').filter(p => p);
+                const calParts = calendarPath.split('/').filter(p => p);
+                
+                // Find where they diverge
+                let matchCount = 0;
+                for (let i = 0; i < Math.min(baseParts.length, calParts.length); i++) {
+                  if (baseParts[i] === calParts[i]) {
+                    matchCount++;
+                  } else {
+                    break;
+                  }
+                }
+                
+                if (matchCount > 0) {
+                  // Remove the matching prefix
+                  calendarPath = calParts.slice(matchCount).join('/');
+                }
+              }
+            } catch (urlError) {
+              // If URL parsing fails, try simple string replacement
+              const serverPath = this.config.serverUrl.replace(/^https?:\/\/[^\/]+/, '').replace(/\/$/, '');
+              if (calendarPath.startsWith(serverPath)) {
+                calendarPath = calendarPath.substring(serverPath.length).replace(/^\//, '');
+              }
+            }
+          }
+          
+          // Ensure path doesn't start with / (relative to baseURL)
+          calendarPath = calendarPath.replace(/^\//, '') || '.';
+          
+          // Remove trailing slash for REPORT request
+          calendarPath = calendarPath.replace(/\/$/, '') || '.';
+          
+          const fullUrl = `${client.defaults.baseURL}${calendarPath.startsWith('.') ? '' : '/'}${calendarPath}`;
+          
+          const response = await client.request({
+            method: 'REPORT',
+            url: calendarPath,
+          headers: {
+            'Depth': '1',
+            'Content-Type': 'application/xml',
+          },
+          data: `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag />
+    <C:calendar-data />
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:time-range start="${this.formatICalDateTime(timeMin)}" end="${this.formatICalDateTime(timeMax)}" />
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`,
+        });
+        
+        // Parse iCalendar data from CalDAV multistatus XML response
+        const events = this.parseCalDAVResponse(response.data, calendar.id);
+        
+        allEvents.push(...events);
+      } catch (error: unknown) {
+        // Continue with other calendars
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn('Error listing events for calendar, continuing', {
+          error: errorMessage,
+          service: 'caldavProvider',
+        });
+      }
+    }
+    
+    // Sort all events by start time
+    allEvents.sort((a, b) => {
+      const aStart = a.start.dateTime || a.start.date || '';
+      const bStart = b.start.dateTime || b.start.date || '';
+      return aStart.localeCompare(bStart);
+    });
+    
+    // Apply maxResults limit if specified
+    if (options.maxResults && allEvents.length > options.maxResults) {
+      return allEvents.slice(0, options.maxResults);
+    }
+    
+    return allEvents;
+  }

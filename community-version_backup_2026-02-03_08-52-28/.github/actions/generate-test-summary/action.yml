@@ -1,0 +1,140 @@
+name: 'Generate Test Results Summary'
+description: 'Generates a test results summary from vitest output'
+
+inputs:
+  test-output-file:
+    description: 'Path to test output file'
+    required: true
+  coverage-file:
+    description: 'Path to coverage lcov.info file'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Test Results Summary
+      shell: bash
+      run: |
+        echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Extract test statistics
+        if [ -f "${{ inputs.test-output-file }}" ]; then
+          # Strip ANSI codes and extract test file count - format: " Test Files  8 passed (8)"
+          TEST_FILES_LINE=$(grep "Test Files" "${{ inputs.test-output-file }}" | head -1 | sed 's/\x1b\[[0-9;]*m//g' || echo "")
+          if [ -n "$TEST_FILES_LINE" ]; then
+            # Extract all numbers from the line
+            NUMBERS=$(echo "$TEST_FILES_LINE" | grep -oE '[0-9]+')
+            # First number is passed count, last number is total
+            TEST_FILES_PASSED=$(echo "$NUMBERS" | head -1)
+            TEST_FILES_TOTAL=$(echo "$NUMBERS" | tail -1)
+            # Check if there's a failed count (would be second number if present)
+            NUM_COUNT=$(echo "$NUMBERS" | wc -l)
+            if [ "$NUM_COUNT" -gt 2 ]; then
+              # Has failed count - it's the middle number
+              TEST_FILES_FAILED=$(echo "$NUMBERS" | sed -n '2p')
+            else
+              TEST_FILES_FAILED="0"
+            fi
+            [ -z "$TEST_FILES_PASSED" ] && TEST_FILES_PASSED="0"
+            [ -z "$TEST_FILES_FAILED" ] && TEST_FILES_FAILED="0"
+            [ -z "$TEST_FILES_TOTAL" ] && TEST_FILES_TOTAL="0"
+          else
+            TEST_FILES_PASSED="0"
+            TEST_FILES_FAILED="0"
+            TEST_FILES_TOTAL="0"
+          fi
+          
+          # Extract test count - format: "      Tests  70 passed (70)"
+          # Use a more flexible grep to find the Tests line (avoid matching "startTests" in stack traces)
+          # First strip ANSI codes from the entire file, then search
+          TESTS_LINE=$(sed 's/\x1b\[[0-9;]*m//g' "${{ inputs.test-output-file }}" | grep "Tests" | grep -v "startTests" | grep -E "[0-9]+ passed" | head -1 || echo "")
+          if [ -n "$TESTS_LINE" ]; then
+            # Extract all numbers from the line (already ANSI-stripped)
+            NUMBERS=$(echo "$TESTS_LINE" | grep -oE '[0-9]+')
+            # First number is passed count, last number is total
+            TESTS_PASSED=$(echo "$NUMBERS" | head -1)
+            TESTS_TOTAL=$(echo "$NUMBERS" | tail -1)
+            # Check if there's a failed count (would be second number if present)
+            NUM_COUNT=$(echo "$NUMBERS" | wc -l | tr -d ' ')
+            if [ "$NUM_COUNT" -gt 2 ]; then
+              # Has failed count - it's the middle number
+              TESTS_FAILED=$(echo "$NUMBERS" | sed -n '2p')
+            else
+              TESTS_FAILED="0"
+            fi
+            [ -z "$TESTS_PASSED" ] && TESTS_PASSED="0"
+            [ -z "$TESTS_FAILED" ] && TESTS_FAILED="0"
+            [ -z "$TESTS_TOTAL" ] && TESTS_TOTAL="0"
+          else
+            TESTS_PASSED="0"
+            TESTS_FAILED="0"
+            TESTS_TOTAL="0"
+          fi
+          
+          # Extract duration - format: "   Duration  1.75s (transform...)"
+          DURATION_LINE=$(grep "Duration" "${{ inputs.test-output-file }}" | head -1 | sed 's/\x1b\[[0-9;]*m//g' || echo "")
+          if [ -n "$DURATION_LINE" ]; then
+            DURATION=$(echo "$DURATION_LINE" | awk '{for(i=1;i<=NF;i++) {if($i ~ /^[0-9]+\.[0-9]+s$/) {print $i; exit}}}')
+            [ -z "$DURATION" ] && DURATION="N/A"
+          else
+            DURATION="N/A"
+          fi
+          
+          # Display test results
+          echo "### Test Execution" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Test Files** | $TEST_FILES_PASSED passed, $TEST_FILES_FAILED failed ($TEST_FILES_TOTAL total) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests** | $TESTS_PASSED passed, $TESTS_FAILED failed ($TESTS_TOTAL total) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Duration** | $DURATION |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Determine status
+          if [ "$TESTS_FAILED" -eq "0" ] && [ "$TEST_FILES_FAILED" -eq "0" ]; then
+            echo "✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some tests failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Extract coverage statistics
+        if [ -f "${{ inputs.coverage-file }}" ]; then
+          echo "### 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Parse coverage from vitest output if available
+          if [ -f "${{ inputs.test-output-file }}" ]; then
+            # Extract coverage percentages from vitest output table
+            # Format: "All files          |   54.33 |    71.73 |   67.34 |   54.33 |"
+            COV_LINE=$(grep -E "^All files" "${{ inputs.test-output-file }}" | head -1 || echo "")
+            if [ -n "$COV_LINE" ]; then
+              # Extract each column (Statements, Branches, Functions, Lines)
+              COV_STMTS=$(echo "$COV_LINE" | awk -F'|' '{print $2}' | xargs | grep -oE "[0-9]+\.[0-9]+" || echo "N/A")
+              COV_BRANCH=$(echo "$COV_LINE" | awk -F'|' '{print $3}' | xargs | grep -oE "[0-9]+\.[0-9]+" || echo "N/A")
+              COV_FUNCS=$(echo "$COV_LINE" | awk -F'|' '{print $4}' | xargs | grep -oE "[0-9]+\.[0-9]+" || echo "N/A")
+              COV_LINES=$(echo "$COV_LINE" | awk -F'|' '{print $5}' | xargs | grep -oE "[0-9]+\.[0-9]+" || echo "N/A")
+              
+              if [ "$COV_LINES" != "N/A" ]; then
+                echo "| Metric | Coverage |" >> $GITHUB_STEP_SUMMARY
+                echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+                echo "| **Statements** | $COV_STMTS% |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Branches** | $COV_BRANCH% |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Functions** | $COV_FUNCS% |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Lines** | $COV_LINES% |" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+          
+          echo "📁 **Detailed Coverage Report**" >> $GITHUB_STEP_SUMMARY
+          echo "View the full coverage report in the uploaded artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ⚠️ Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage report not generated." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -1,0 +1,40 @@
+{
+    "name": "@shared/services",
+    "version": "1.0.0",
+    "description": "Shared service implementations for CitadelAI",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run",
+        "watch": "tsc --watch"
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "3.485.0",
+        "@google/generative-ai": "^0.24.1",
+        "@shared/types": "file:../types",
+        "@shared/utils": "file:../utils",
+        "@types/pdf-parse": "^1.1.5",
+        "@xenova/transformers": "^2.17.2",
+        "csv-parse": "^6.1.0",
+        "mammoth": "^1.11.0",
+        "officeparser": "^6.0.4",
+        "pdf-parse": "^2.4.5",
+        "xlsx": "^0.18.5"
+    },
+    "peerDependencies": {
+        "@prisma/client": "^5.0.0"
+    },
+    "devDependencies": {
+        "@prisma/client": "^5.0.0",
+        "@types/better-sqlite3": "^7.6.11",
+        "@types/express": "^4.17.13",
+        "@types/multer": "^1.4.12",
+        "@types/node": "^20.0.0",
+        "@types/pg": "^8.10.9",
+        "better-sqlite3": "^11.6.0",
+        "mysql2": "^3.9.0",
+        "pg": "^8.11.3",
+        "typescript": "^5.1.0"
+    }
+}

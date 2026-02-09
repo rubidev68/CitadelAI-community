@@ -1,0 +1,496 @@
+name: Update Business Edition Wiki Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'documentation/**'
+      - 'scripts/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+  schedule:
+    # Run daily at 2 AM UTC to sync documentation
+    - cron: '0 2 * * *'
+
+# Add explicit permissions for wiki operations
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.WIKI_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+      
+      - name: Generate Changelog
+        run: |
+          echo "📝 Generating changelog from recent commits..."
+          if [ -f "scripts/generate-changelog.sh" ]; then
+            chmod +x scripts/generate-changelog.sh
+            ./scripts/generate-changelog.sh || echo "⚠️ Changelog generation failed, continuing..."
+          else
+            echo "⚠️ Changelog generation script not found, skipping..."
+          fi
+      
+      - name: Update Documentation with Recent Changes
+        run: |
+          echo "📚 Updating documentation with recent changes..."
+          
+          # Update version in documentation README if .version file exists
+          if [ -f ".version" ]; then
+            VERSION=$(cat .version | tr -d '\n')
+            echo "Current version: $VERSION"
+            
+            # Update documentation README version info
+            if [ -f "documentation/README.md" ]; then
+              sed -i "s/\*\*Platform Version\*\*:.*/\*\*Platform Version\*\*: $VERSION/" documentation/README.md || true
+              sed -i "s/\*\*Last Updated\*\*:.*/\*\*Last Updated\*\*: $(date +'%B %Y')/" documentation/README.md || true
+            fi
+            
+            # Update main README if it has version info
+            if grep -q "Version\|version" README.md; then
+              echo "✅ Version information updated in documentation"
+            fi
+          fi
+          
+          # Add changelog reference to documentation README
+          if [ -f "CHANGELOG.md" ] && [ -f "documentation/README.md" ]; then
+            if ! grep -q "CHANGELOG.md" documentation/README.md; then
+              echo "" >> documentation/README.md
+              echo "## 📋 Changelog" >> documentation/README.md
+              echo "" >> documentation/README.md
+              echo "See [CHANGELOG.md](../CHANGELOG.md) for detailed version history and recent changes." >> documentation/README.md
+            fi
+          fi
+          
+          echo "✅ Documentation updated with recent changes"
+      
+      - name: Verify Business Documentation Files
+        run: |
+          echo "Checking business edition documentation files..."
+          if [ ! -d "documentation" ]; then
+            echo "❌ Documentation directory not found!"
+            exit 1
+          fi
+          
+          echo "📁 Business documentation files found:"
+          ls -la documentation/
+          
+          # Count markdown files
+          md_count=$(find documentation -name "*.md" | wc -l)
+          echo "📄 Found $md_count markdown files"
+          
+          # Check for core documentation files
+          if [ ! -f "documentation/README.md" ]; then
+            echo "⚠️  Warning: documentation/README.md not found"
+          else
+            echo "✅ Main README documentation found"
+          fi
+          
+          # Check for business-specific service documentation
+          if [ ! -f "documentation/user_service.md" ]; then
+            echo "⚠️  Warning: documentation/user_service.md not found"
+          else
+            echo "✅ User Service documentation found"
+          fi
+          
+          if [ ! -f "documentation/admin_service.md" ]; then
+            echo "⚠️  Warning: documentation/admin_service.md not found"
+          else
+            echo "✅ Admin Service documentation found"
+          fi
+          
+          if [ ! -f "documentation/crawling_service.md" ]; then
+            echo "⚠️  Warning: documentation/crawling_service.md not found"
+          else
+            echo "✅ Crawling Service documentation found (4 jobs × 5 pages = 20 concurrent operations)"
+          fi
+          
+          if [ ! -f "documentation/cron_scheduler_service.md" ]; then
+            echo "⚠️  Warning: documentation/cron_scheduler_service.md not found"
+          else
+            echo "✅ Cron Scheduler Service documentation found (multi-timezone support)"
+          fi
+          
+          if [ ! -f "documentation/frontend_interfaces.md" ]; then
+            echo "⚠️  Warning: documentation/frontend_interfaces.md not found"
+          else
+            echo "✅ Frontend Interfaces documentation found"
+          fi
+          
+          # Check for architecture and API documentation (business version)
+          if [ ! -f "documentation/architecture.md" ]; then
+            echo "⚠️  Warning: documentation/architecture.md not found"
+          else
+            echo "✅ Architecture documentation found (Service-based architecture)"
+          fi
+          
+          if [ ! -f "documentation/API_REFERENCE.md" ]; then
+            echo "⚠️  Warning: documentation/API_REFERENCE.md not found"
+          else
+            echo "✅ API Reference documentation found (Direct service communication)"
+          fi
+          
+          if [ ! -f "documentation/DEVELOPMENT.md" ]; then
+            echo "⚠️  Warning: documentation/DEVELOPMENT.md not found"
+          else
+            echo "✅ Development documentation found (Business Edition)"
+          fi
+          
+          # Check for instance provisioning documentation
+          if [ ! -f "documentation/instance_provisioning_service.md" ]; then
+            echo "⚠️  Warning: documentation/instance_provisioning_service.md not found"
+          else
+            echo "✅ Instance Provisioning Service documentation found"
+          fi
+          
+          if [ ! -f "documentation/email_service.md" ]; then
+            echo "⚠️  Warning: documentation/email_service.md not found"
+          else
+            echo "✅ Email Service documentation found (SMTP integration, resilience features)"
+          fi
+          
+          # Check for AI provider documentation
+          if [ ! -f "documentation/LLM_PROVIDERS.md" ]; then
+            echo "⚠️  Warning: documentation/LLM_PROVIDERS.md not found"
+          else
+            echo "✅ AI Providers documentation found (Gemini 2.5, GPT-5, Claude 4.5, Mistral)"
+          fi
+          
+          if [ ! -f "documentation/TESTING.md" ]; then
+            echo "⚠️  Warning: documentation/TESTING.md not found"
+          else
+            echo "✅ Testing documentation found (Business Edition)"
+          fi
+          
+          # Check for main README (business version)
+          if [ ! -f "README.md" ]; then
+            echo "⚠️  Warning: README.md not found"
+          else
+            echo "✅ Main README.md found (Business Edition)"
+          fi
+          
+          # Check for documentation README
+          if [ ! -f "documentation/README.md" ]; then
+            echo "⚠️  Warning: documentation/README.md not found"
+          else
+            echo "✅ Documentation README.md found (Business Edition)"
+          fi
+          
+          echo "📊 Business Documentation Summary:"
+          echo "   - Total markdown files: $md_count"
+          echo "   - Service documentation: 6 files (User, Admin, Crawling, Cron Scheduler, Instance Provisioning, Email)"
+          echo "   - Architecture documentation: 3 files (Architecture, AI Pipeline, Service Interaction)"
+          echo "   - API documentation: 2 files (API Reference, API Routes)"
+          echo "   - Deployment documentation: 2 files (standard + microservices)"
+          echo "   - Development documentation: 1 file (Business Edition)"
+          echo "   - AI provider documentation: 1 file (Gemini 2.5, GPT-5, Claude 4.5, Mistral)"
+          echo "   - Testing documentation: 1 file (Business Edition)"
+          echo "   - Microservices documentation: 2 files (Deployment + Improvements)"
+          echo "   - Specialized documentation: 8 files (System Prompt, Performance, Auth, etc.)"
+          echo "   - Main README: 1 file (Business Edition)"
+          echo "   - Documentation README: 1 file (Business Edition)"
+          echo "   - Total expected files: 25+ files"
+          echo "   - 🏢 This is the **Business Edition** documentation with full enterprise features"
+      
+      - name: Create Business Wiki Update Script
+        run: |
+          cat > scripts/push-to-business-wiki.sh << 'EOF'
+          #!/bin/bash
+          
+          # Business Edition Wiki Update Script
+          set -e
+          
+          REPO_NAME="${{ github.repository }}"
+          WIKI_REPO="https://${GITHUB_TOKEN}@github.com/$REPO_NAME.wiki.git"
+          WIKI_DIR="/tmp/business-wiki-$(date +%s)"
+          REPO_ROOT="${{ github.workspace }}"
+          
+          echo "🚀 Updating Business Edition Wiki..."
+          echo "Repository: $REPO_NAME"
+          echo "Wiki URL: $WIKI_REPO"
+          echo "Repository root: $REPO_ROOT"
+          
+          # Clone wiki repository (create if doesn't exist)
+          if git clone "$WIKI_REPO" "$WIKI_DIR" 2>/dev/null; then
+            echo "✅ Wiki repository cloned successfully"
+            cd "$WIKI_DIR"
+          else
+            echo "⚠️ Wiki repository doesn't exist, creating it..."
+            mkdir -p "$WIKI_DIR"
+            cd "$WIKI_DIR"
+            git init
+            git remote add origin "$WIKI_REPO"
+            git checkout -b master || git checkout -b main || true
+          fi
+          
+          # Copy documentation files
+          echo "📄 Copying documentation files..."
+          
+          # Copy main README as Home page (always update this)
+          if [ -f "$REPO_ROOT/README.md" ]; then
+            cp "$REPO_ROOT/README.md" "Home.md"
+            echo "✅ Home.md updated from README.md"
+          else
+            echo "⚠️ README.md not found at $REPO_ROOT/README.md, skipping Home.md update"
+          fi
+          
+          # Copy CHANGELOG if it exists
+          if [ -f "$REPO_ROOT/CHANGELOG.md" ]; then
+            cp "$REPO_ROOT/CHANGELOG.md" "Changelog.md"
+            echo "✅ Changelog copied to wiki"
+          fi
+          
+          # Copy service documentation
+          cp "$REPO_ROOT/documentation/user_service.md" "User-Service.md"
+          cp "$REPO_ROOT/documentation/admin_service.md" "Admin-Service.md"
+          cp "$REPO_ROOT/documentation/crawling_service.md" "Crawling-Service.md"
+          cp "$REPO_ROOT/documentation/cron_scheduler_service.md" "Cron-Scheduler-Service.md"
+          cp "$REPO_ROOT/documentation/frontend_interfaces.md" "Frontend-Interfaces.md"
+          
+          # Copy architecture and API documentation
+          cp "$REPO_ROOT/documentation/architecture.md" "Architecture.md"
+          cp "$REPO_ROOT/documentation/API_REFERENCE.md" "API-Reference.md"
+          
+          # Copy development documentation
+          cp "$REPO_ROOT/documentation/DEVELOPMENT.md" "Development.md"
+          
+          # Copy instance provisioning documentation
+          cp "$REPO_ROOT/documentation/instance_provisioning_service.md" "Instance-Provisioning-Service.md"
+          
+          # Copy email service documentation
+          cp "$REPO_ROOT/documentation/email_service.md" "Email-Service.md"
+          
+          # Copy AI provider documentation
+          cp "$REPO_ROOT/documentation/LLM_PROVIDERS.md" "AI-Providers.md"
+          
+          # Copy testing documentation (if exists)
+          if [ -f "$REPO_ROOT/documentation/TESTING.md" ]; then
+            cp "$REPO_ROOT/documentation/TESTING.md" "Testing.md"
+          fi
+          
+          # Create business-specific pages
+          cat > "Business-Edition.md" << 'BUSINESS_EOF'
+          # CitadelAI Business Edition
+          
+          Welcome to the CitadelAI Business Edition! This is the enterprise-grade version of our AI-powered chatbot platform with full business features.
+          
+          ## 🌟 What's Included
+          
+          ### ✅ All Community Features
+          - User and Admin frontend/backend
+          - Web crawling service
+          - Cron scheduler
+          - Basic chatbot builder blocks
+          - Core AI integration
+          - Vector search with Weaviate
+          - Real-time streaming
+          - Basic analytics
+          
+          ### 🏢 Additional Business Features
+          - **Advanced Billing System**: Complete subscription management
+          - **Enterprise User Management**: Advanced user roles and permissions
+          - **Advanced Analytics Dashboard**: Comprehensive business metrics
+          - **Premium AI Model Access**: Access to latest AI models
+          - **AdminJS Super Admin Dashboard**: Complete system administration
+          - **Enterprise Contact Management**: Customer relationship management
+          - **Proposal and Billing Management**: Business proposal generation
+          - **Instance Provisioning Service**: Dedicated enterprise instance management
+          - **Business Website**: Public marketing website
+          - **Advanced Monitoring**: Prometheus, Grafana, Jaeger
+          
+          ## 🚀 Quick Start
+          
+          See the [Deployment](Deployment) page for installation instructions.
+          
+          ## 🏗️ Architecture
+          
+          The Business Edition includes:
+          - **Service-based Architecture**: Independent, containerized services
+          - **Direct Service Communication**: Optimized architecture without API gateway overhead
+          - **Scalable Design**: Horizontal scaling capabilities
+          - **Advanced Monitoring**: Prometheus, Grafana, Jaeger integration
+          
+          ## 📚 Documentation
+          
+          - [Architecture](Architecture) - Service-based architecture
+          - [User Service](User-Service) - User-facing API
+          - [Admin Service](Admin-Service) - Admin management API
+          - [Crawling Service](Crawling-Service) - Web crawling engine
+          - [Cron Scheduler Service](Cron-Scheduler-Service) - Scheduled tasks
+          - [Instance Provisioning Service](Instance-Provisioning-Service) - Dedicated instance management
+          - [Email Service](Email-Service) - Centralized email sending service
+          - [Frontend Interfaces](Frontend-Interfaces) - React applications
+          - [API Reference](API-Reference) - Complete API documentation
+          - [AI Providers](AI-Providers) - AI model integration
+          - [Testing](Testing) - Comprehensive testing guide
+          
+          ## 📄 License
+          
+          This is proprietary software. Contact us for licensing information.
+          BUSINESS_EOF
+          
+          # Create AdminJS Dashboard documentation
+          cat > "AdminJS-Dashboard.md" << 'ADMINJS_EOF'
+          # AdminJS Super Admin Dashboard
+          
+          The AdminJS Dashboard provides comprehensive system administration capabilities for the Business Edition.
+          
+          ## Features
+          
+          - **System Metrics**: Real-time performance monitoring
+          - **User Management**: Advanced user administration
+          - **Billing Management**: Subscription and payment tracking
+          - **Enterprise Contacts**: Customer relationship management
+          - **Proposal Generation**: Automated business proposal creation
+          - **System Health**: Service status and health monitoring
+          
+          ## Access
+          
+          The AdminJS Dashboard is available at `http://localhost:3009` when running the standard or local deployment.
+          
+          ## Configuration
+          
+          See the [Development](Development) guide for setup instructions.
+          ADMINJS_EOF
+          
+          # Create Business Website documentation
+          cat > "Business-Website.md" << 'WEBSITE_EOF'
+          # Business Website
+          
+          The Business Website is a modern marketing site built with React and TypeScript.
+          
+          ## Features
+          
+          - **Modern UI**: Built with Tailwind CSS and shadcn/ui
+          - **Responsive Design**: Mobile-first approach
+          - **Performance Optimized**: Fast loading and smooth animations
+          - **SEO Ready**: Optimized for search engines
+          
+          ## Development
+          
+          ```bash
+          cd business_website
+          npm install
+          npm run dev
+          ```
+          
+          ## Deployment
+          
+          The website is automatically deployed as part of the standard stack.
+          WEBSITE_EOF
+          
+          # Commit and push changes
+          git add .
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit"
+          else
+            # Get recent commit messages for changelog
+            RECENT_COMMITS=$(git -C "$REPO_ROOT" log --oneline -10 | head -5 | sed 's/^/  - /' || echo "  - Documentation updates")
+            
+            git commit -m "Update Business Edition Wiki Documentation
+
+          - Updated all service documentation
+          - Added Business Edition specific information
+          - Included instance provisioning and enterprise features
+          - Synchronized with latest codebase changes
+          - Added AdminJS Dashboard and Business Website documentation
+          - Updated changelog and version information
+          - Updated Home.md (main wiki page)
+          - Recent changes:
+          $RECENT_COMMITS" || echo "⚠️ Commit failed, but continuing..."
+            
+            # Try to push to master, then main if master fails
+            if git push origin master 2>/dev/null || git push origin main 2>/dev/null || git push -u origin master 2>/dev/null || git push -u origin main 2>/dev/null; then
+              echo "✅ Successfully pushed to wiki"
+            else
+              echo "❌ Failed to push to wiki"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ Business Edition Wiki updated successfully!"
+          echo "🌐 Check your wiki at: https://github.com/$REPO_NAME/wiki"
+          EOF
+          
+          chmod +x scripts/push-to-business-wiki.sh
+      
+      - name: Update Business Wiki
+        run: |
+          echo "🚀 Starting business wiki update..."
+          
+          # Ensure script is executable
+          chmod +x scripts/push-to-business-wiki.sh
+          
+          # Run the business wiki update script
+          if ./scripts/push-to-business-wiki.sh; then
+            echo "✅ Business wiki update completed successfully!"
+          else
+            echo "❌ Business wiki update failed!"
+            echo "📋 Troubleshooting steps:"
+            echo "1. Check if wiki is enabled: https://github.com/${{ github.repository }}/settings"
+            echo "2. Verify token has 'repo' scope"
+            echo "3. Check repository permissions"
+            echo "4. Wiki repository might need to be initialized manually"
+            # Don't fail the workflow, just log the error
+            exit 0
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.WIKI_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+      
+      - name: Verify Business Wiki Update
+        run: |
+          echo "🎉 Business Edition Wiki update completed successfully!"
+          echo "📖 Check your wiki at: https://github.com/${{ github.repository }}/wiki"
+          echo "🔗 Business Edition wiki pages should be available at:"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Home"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Business-Edition"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Architecture"
+          echo "   - https://github.com/${{ github.repository }}/wiki/User-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Admin-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Crawling-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Cron-Scheduler-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Frontend-Interfaces"
+          echo "   - https://github.com/${{ github.repository }}/wiki/API-Reference"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Development"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Instance-Provisioning-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Email-Service"
+          echo "   - https://github.com/${{ github.repository }}/wiki/AI-Providers"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Testing"
+          echo "   - https://github.com/${{ github.repository }}/wiki/AdminJS-Dashboard"
+          echo "   - https://github.com/${{ github.repository }}/wiki/Business-Website"
+          echo ""
+          echo "📚 Business Edition Documentation Overview:"
+          echo "   ✅ Complete service documentation for all 5 services"
+          echo "   ✅ Service-based architecture documentation"
+          echo "   ✅ Full API reference with direct service communication"
+          echo "   ✅ Current AI provider support (Gemini 2.5, GPT-5, Claude 4.5, Mistral)"
+          echo "   ✅ Enterprise development guides"
+          echo "   ✅ Comprehensive testing documentation"
+          echo "   ✅ Instance Provisioning Service documentation"
+          echo "   ✅ Email Service documentation (SMTP integration, resilience)"
+          echo "   ✅ AdminJS Dashboard documentation"
+          echo "   ✅ Business Website documentation"
+          echo "   ✅ All documentation synchronized with business codebase"
+          echo ""
+          echo "🎯 Next Steps:"
+          echo "   1. Review the updated business wiki pages"
+          echo "   2. Test the documentation links"
+          echo "   3. Share with team members"
+          echo "   4. Gather feedback for improvements"
