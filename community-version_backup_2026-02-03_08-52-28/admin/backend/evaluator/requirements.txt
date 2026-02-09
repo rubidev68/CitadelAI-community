@@ -1,5 +1,0 @@
-deepeval>=0.21.0
-requests==2.32.4
-
-h11==0.16.0
-protobuf==4.25.8

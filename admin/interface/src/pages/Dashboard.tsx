@@ -14,9 +14,9 @@ import { createChatbot as apiCreateChatbot, getChatbots, loginAsTestUser, getDas
 import { USER_INTERFACE_URL } from '@/lib/apiClient';
 import { useErrorHandler, ApiError } from '@/hooks/useErrorHandler';
 import UserSettingsModal from '@/components/UserSettingsModal';
-import SubscriptionButton from '@/components/SubscriptionButton';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import TrialExpiredModal from '@/components/TrialExpiredModal';
+
+
+
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
@@ -33,7 +33,7 @@ interface ChatbotWithCount {
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const { isFeatureEnabled } = useFeatureFlags();
-  const { subscriptionStatus } = useSubscription();
+  const subscriptionStatus: any = {};
   const navigate = useNavigate();
   const { handleError } = useErrorHandler(logout);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -97,9 +97,7 @@ const Dashboard = () => {
   };
 
   // Check if chatbot limit is reached
-  const isChatbotLimitReached = subscriptionStatus?.maxChatbots !== null && 
-    subscriptionStatus?.currentChatbotCount !== undefined &&
-    subscriptionStatus.currentChatbotCount >= subscriptionStatus.maxChatbots;
+  const isChatbotLimitReached = false;
 
   const handleEditChatbot = (id: string) => {
     navigate(`/chatbot/${id}`);
@@ -129,16 +127,11 @@ const Dashboard = () => {
     return colors[index % colors.length];
   };
 
-  const showTrialExpiredModal = Boolean(
-    isFeatureEnabled('billing') &&
-    subscriptionStatus?.hasSubscription &&
-    subscriptionStatus.status === 'TRIAL' &&
-    !subscriptionStatus.isActive
-  );
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <TrialExpiredModal open={showTrialExpiredModal} />
+      
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
@@ -198,12 +191,7 @@ const Dashboard = () => {
                 <User className="w-4 h-4 mr-2" />
                 Settings
               </Button>
-              {isFeatureEnabled('billing') && (
-                <SubscriptionButton onManageSubscription={() => {
-                  setSettingsDefaultTab("subscription");
-                  setIsUserSettingsOpen(true);
-                }} />
-              )}
+              
               <Button variant="outline" size="sm" onClick={handleLoginAsTestUser}>
                 <LogIn className="w-4 h-4 mr-2" />
                 Test Mode

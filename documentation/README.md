@@ -298,8 +298,8 @@ const crawlJob = await fetch('/crawl', {
 ## Version Information
 
 - **Documentation Version**: 2.3.0
-- **Platform Version**: 1.8.4
-- **Last Updated**: January 2026
+- **Platform Version**: 1.9.2
+- **Last Updated**: February 2026
 - **Coverage**: Complete platform documentation with all services and deployment options
 - **Recent Updates**: 
   - Resilience library with circuit breaker, health checker, and metrics

@@ -11,7 +11,7 @@ import { Plus, X, Mail, Shield, Activity, Users, Crown, AlertTriangle, BookOpen 
 import { useToast } from '@/hooks/use-toast';
 import { useBlockEditor } from '@/contexts/BlockEditorContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+
 import { getChatbotUsers, addChatbotUser, removeChatbotUser, getMe, deleteChatbot } from '@/lib/api';
 import { useErrorHandler, ApiError } from '@/hooks/useErrorHandler';
 import { USER_INTERFACE_URL } from '@/lib/apiClient';
@@ -23,7 +23,7 @@ const ChatbotSettingsModal = ({ open, onOpenChange }: ChatbotSettingsModalProps)
   const { toast } = useToast();
   const { logout } = useAuth();
   const { handleError } = useErrorHandler(logout);
-  const { refreshSubscription } = useSubscription();
+  const refreshSubscription = async () => {};
   const { ownerId, chatbotName } = useBlockEditor();
   
   const [allowedUsers, setAllowedUsers] = useState([]);

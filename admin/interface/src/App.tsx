@@ -8,9 +8,9 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import MultiStepRegisterPage from "./pages/MultiStepRegisterPage";
 import NotFound from "./pages/NotFound";
-import SubscriptionSuccessPage from "./pages/SubscriptionSuccessPage";
+
 import ProposalPaymentSuccessPage from "./pages/ProposalPaymentSuccessPage";
-import SubscriptionCancelPage from "./pages/SubscriptionCancelPage";
+
 import TwoFactorSetupPage from "./pages/TwoFactorSetupPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -21,20 +21,12 @@ import CloudOAuthCallbackPage from "./pages/CloudOAuthCallbackPage";
 import CloudBlockDocsPage from "./pages/CloudBlockDocsPage";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TutorialProvider } from "@/contexts/TutorialContext";
-import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
+
 import { FeatureFlagsProvider, useFeatureFlags } from "@/contexts/FeatureFlagsContext";
 
 const queryClient = new QueryClient();
 
-const ConditionalSubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isFeatureEnabled } = useFeatureFlags();
-  
-  if (isFeatureEnabled('billing')) {
-    return <SubscriptionProvider>{children}</SubscriptionProvider>;
-  }
-  
-  return <>{children}</>;
-};
+
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -44,7 +36,7 @@ const App = () => (
   <FeatureFlagsProvider>
   <AuthProvider>
   <TutorialProvider>
-  <SubscriptionProvider>
+  
   <BrowserRouter>
   <Routes>
   <Route path="/" element={<Index />} />
@@ -55,8 +47,8 @@ const App = () => (
   <Route path="/reset-password" element={<ResetPasswordPage />} />
   <Route path="/builder" element={<Index />} />
   <Route path="/chatbot/:id" element={<Index />} />
-  <Route path="/subscription/success" element={<SubscriptionSuccessPage />} />
-  <Route path="/subscription/cancel" element={<SubscriptionCancelPage />} />
+  
+  
   <Route path="/proposal/payment-success" element={<ProposalPaymentSuccessPage />} />
   <Route path="/2fa/setup" element={<TwoFactorSetupPage />} />
   <Route path="/terms" element={<TermsOfService />} />
@@ -68,7 +60,7 @@ const App = () => (
   <Route path="*" element={<NotFound />} />
   </Routes>
   </BrowserRouter>
-  </SubscriptionProvider>
+  
   </TutorialProvider>
   </AuthProvider>
   </FeatureFlagsProvider>

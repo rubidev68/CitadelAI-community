@@ -12,9 +12,9 @@ import { useFeatureFlags } from '@/contexts/FeatureFlagsContext';
 import { updateUserProfile, changePassword, deleteAccount, getMe, disableTwoFactor, regenerateBackupCodes } from '@/lib/api';
 import { useErrorHandler, ApiError } from '@/hooks/useErrorHandler';
 import { useNavigate } from 'react-router-dom';
-import SubscriptionSection from './SubscriptionSection';
+
 import CommunityEditionInfo from './CommunityEditionInfo';
-import BusinessEditionInfo from './BusinessEditionInfo';
+
 import CustomInstanceInfo from './CustomInstanceInfo';
 import { getTermsOfServiceUrl, getPrivacyPolicyUrl } from '@/utils/businessWebsiteUrl';
 
@@ -81,9 +81,7 @@ const UserSettingsModal = ({ open, onOpenChange, defaultTab = "profile", onReope
   // Tab order for determining slide direction
   const getTabOrder = () => {
     const tabs = ['profile'];
-    if (isFeatureEnabled('billing')) {
-      tabs.push('subscription');
-    }
+    
     tabs.push('community', 'security', 'danger');
     return tabs;
   };
@@ -250,17 +248,12 @@ const UserSettingsModal = ({ open, onOpenChange, defaultTab = "profile", onReope
             onValueChange={handleTabChange}
             className="space-y-6"
           >
-            <TabsList className={`grid w-full ${isFeatureEnabled('billing') ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <TabsList className={`grid w-full ${isFeatureEnabled('billing') ? 'grid-cols-4' : 'grid-cols-4'}`}>
               <TabsTrigger value="profile" className="flex items-center space-x-2">
                 <User className="w-5 h-5 flex-shrink-0" />
                 <span>Profile</span>
               </TabsTrigger>
-              {isFeatureEnabled('billing') && (
-                <TabsTrigger value="subscription" className="flex items-center space-x-2">
-                  <CreditCard className="w-5 h-5 flex-shrink-0" />
-                  <span>Subscription</span>
-                </TabsTrigger>
-              )}
+              
               <TabsTrigger value="community" className="flex items-center space-x-2">
                 <Info className="w-5 h-5 flex-shrink-0" />
                 <span>About</span>
@@ -344,11 +337,7 @@ const UserSettingsModal = ({ open, onOpenChange, defaultTab = "profile", onReope
 
                 {/* Community Tab */}
                 <TabsContent value="community" className="space-y-4">
-              {isFeatureEnabled('billing') ? (
-                <BusinessEditionInfo />
-              ) : (
-                <CustomInstanceInfo />
-              )}
+              <CustomInstanceInfo />
               
               {/* Legal Links */}
               <div className="pt-6 border-t border-border">
@@ -501,11 +490,7 @@ const UserSettingsModal = ({ open, onOpenChange, defaultTab = "profile", onReope
                 </TabsContent>
 
                 {/* Subscription Tab */}
-                {isFeatureEnabled('billing') && (
-                  <TabsContent value="subscription" className="space-y-4">
-                    <SubscriptionSection onReopen={() => onOpenChange(true)} />
-                  </TabsContent>
-                )}
+                
 
                 {/* Danger Zone Tab */}
                 <TabsContent value="danger" className="space-y-4">

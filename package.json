@@ -17,11 +17,7 @@
     "admin/backend",
     "admin/interface",
     "crawling-service",
-    "cron-scheduler",
-    "email-service",
-    "superadmin-dashboard/backend",
-    "superadmin-dashboard/frontend",
-    "business_website"
+    "cron-scheduler"
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",

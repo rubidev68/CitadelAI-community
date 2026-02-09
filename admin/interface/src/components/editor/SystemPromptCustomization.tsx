@@ -34,7 +34,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -105,7 +105,7 @@ const getIconForProvider = (provider: string) => {
 
 const SystemPromptCustomization: React.FC<SystemPromptCustomizationProps> = ({ block }) => {
   const { updateBlock, blocks } = useBlockEditor();
-  const { subscriptionStatus } = useSubscription();
+  const subscriptionStatus: any = {};
   const { toast } = useToast();
   const [globalModels, setGlobalModels] = React.useState<GlobalAIModel[]>([]);
   const [providerAvailability, setProviderAvailability] = React.useState<ProviderAvailability | null>(null);

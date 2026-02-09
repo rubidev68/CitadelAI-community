@@ -311,7 +311,7 @@ jobs:
           
           ## 📄 License
           
-          This project is licensed under the MIT License.
+          This project is licensed under the Apache 2.0 License.
           COMMUNITY_EOF
           
           # Commit and push changes

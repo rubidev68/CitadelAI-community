@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import CronFrequencySelector from '@/components/ui/CronFrequencySelector';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBlockEditor } from '@/contexts/BlockEditorContext';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+
 import { crawlWebsite, stopCrawlWebsite, updateCronSettings } from '@/lib/api';
 import { Block } from '@/types/block';
 import CrawledPagesModal from './CrawledPagesModal';
@@ -23,7 +23,7 @@ interface WebsiteContextPropertiesProps {
 const WebsiteContextProperties: React.FC<WebsiteContextPropertiesProps> = ({ block }) => {
   const { id: chatbotId } = useParams<{ id: string }>();
   const { token } = useAuth();
-  const { subscriptionStatus } = useSubscription();
+  const subscriptionStatus: any = {};
   const { updateBlock, websiteContexts, setWebsiteContexts, saveChatbot, updateWebsiteContext } = useBlockEditor();
   const { toast } = useToast();
   const [isStopping, setIsStopping] = useState(false);

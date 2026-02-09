@@ -4,6 +4,7 @@ import cron from 'node-cron';
 import bcrypt from 'bcrypt';
 import { isFeatureEnabled } from './shared/config/features';
 import { getEmailService } from './services/zoho-email';
+
 import { checkChatbotLimit } from './middleware/subscriptionMiddleware';
 import prisma from './lib/prisma';
 import app, { adminLogger } from './app';
@@ -128,12 +129,12 @@ import crawlingRoutes from './routes/crawling';
 import documentsRoutes from './routes/documents';
 import testDatasetsRoutes from './routes/testDatasets';
 import testRunsRoutes from './routes/testRuns';
-import trialNotificationsRoutes, { checkAndSendTrialNotifications } from './routes/trialNotifications';
+
 
 // Always load core routes
 app.use('/api/admin', crawlingRoutes);
 app.use('/api/admin', documentsRoutes);
-app.use('/api/admin/trial-notifications', trialNotificationsRoutes);
+
 
 // Widget routes (public endpoints) - Register BEFORE publicApi to ensure /api/widget routes match first
 import widgetRoutes from './routes/widget';
@@ -166,14 +167,7 @@ adminLogger.info('Test runs routes loaded');
 
 // Load business routes (billing, subscription, enterprise)
 // These are consolidated in a separate module that can be easily removed for Community Edition
-if (isFeatureEnabled('billing') || isFeatureEnabled('enterprise')) {
-  const { registerBusinessRoutes } = require('./routes/business');
-  registerBusinessRoutes(app).catch((error: unknown) => {
-    adminLogger.error('Error registering business routes', {
-      error: error instanceof Error ? error : new Error(String(error)),
-    });
-  });
-}
+
 
 // Test email endpoint (for debugging)
 app.get('/api/admin/test-email', async (req, res) => {
@@ -244,19 +238,6 @@ if (config.NODE_ENV !== 'test') {
 }
 
 // Set up scheduled task for trial notifications (runs daily at 9 AM UTC)
-if (isFeatureEnabled('billing')) {
-  // Schedule trial notification check to run daily at 9:00 AM UTC
-  cron.schedule('0 9 * * *', async () => {
-    adminLogger.info('Running scheduled trial notification check');
-    try {
-      await checkAndSendTrialNotifications();
-    } catch (error: unknown) {
-      adminLogger.error('Error in scheduled trial notification check', { error: error instanceof Error ? error : new Error(String(error)) });
-    }
-  }, {
-    timezone: 'UTC'
-  });
-  adminLogger.info('Trial notification scheduler initialized', { schedule: 'daily at 9:00 AM UTC' });
-}
+
 
 export default app;

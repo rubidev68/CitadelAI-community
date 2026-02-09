@@ -26,7 +26,7 @@ const CustomInstanceInfo = () => {
           </Badge>
           <Badge variant="outline" className="px-3 py-1 border-purple-200 bg-purple-50 text-purple-700">
             <Code className="w-3 h-3 mr-1.5" />
-            MIT License
+            Apache 2.0 License
           </Badge>
         </div>
       </div>

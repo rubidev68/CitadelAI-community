@@ -66,7 +66,19 @@
     "admin/backend/src/routes/billing.ts",
     "admin/backend/src/services/subscriptionUsageCache.ts",
     "admin/backend/src/services/BusinessSubscriptionService.ts",
-    "admin/backend/src/services/BusinessNotificationService.ts"
+    "admin/backend/src/services/BusinessNotificationService.ts",
+    "admin/backend/src/routes/enterprise.ts",
+    "admin/backend/src/routes/trialNotifications.ts",
+    "admin/interface/src/pages/SubscriptionSuccessPage.tsx",
+    "admin/interface/src/pages/SubscriptionCancelPage.tsx",
+    "admin/interface/src/contexts/SubscriptionContext.tsx",
+    "admin/interface/src/components/SubscriptionModal.tsx",
+    "admin/interface/src/components/SubscriptionButton.tsx",
+    "admin/interface/src/components/SubscriptionSection.tsx",
+    "admin/interface/src/components/SubscriptionStatus.tsx",
+    "admin/interface/src/components/TrialExpiredModal.tsx",
+    "admin/interface/src/components/UsageDisplay.tsx",
+    "admin/interface/src/components/BusinessEditionInfo.tsx"
   ],
   "patches": [
     { "script": "scripts/patch_auth.py", "description": "Patch Auth Backend" },
@@ -88,6 +100,59 @@
     { "script": "scripts/patch_dynamic_models.py", "description": "Patch Dynamic Models" }
   ],
   "inline_patches": [
+    {
+      "file": "admin/backend/src/index.ts",
+      "description": "Remove Business Routes",
+      "replacements": [
+        { "pattern": "import \\{ stripe \\} from './services/stripeService';", "replacement": "" },
+        { "pattern": "import trialNotificationsRoutes.*?;", "replacement": "" },
+        { "pattern": "app\\.use\\('/api/admin/trial-notifications'.*?;", "replacement": "" },
+        { "pattern": "if \\(isFeatureEnabled\\('billing'\\) \\|\\| isFeatureEnabled\\('enterprise'\\)\\) \\{\\s*const \\{ registerBusinessRoutes \\} = require\\('./routes/business'\\);\\s*registerBusinessRoutes\\(app\\)\\.catch\\(\\(error: unknown\\) => \\{\\s*adminLogger\\.error\\('Error registering business routes', \\{\\s*error: error instanceof Error \\? error : new Error\\(String\\(error\\)\\),\\s*\\}\\);\\s*\\}\\);\\s*\\}", "replacement": "" },
+        { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*// Schedule trial notification check[\\s\\S]*?adminLogger\\.info\\('Trial notification scheduler initialized'.*?\\);\\s*\\}", "replacement": "" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/App.tsx",
+      "description": "Remove Subscription Routes",
+      "replacements": [
+        { "pattern": "import SubscriptionSuccessPage.*?;", "replacement": "" },
+        { "pattern": "import SubscriptionCancelPage.*?;", "replacement": "" },
+        { "pattern": "import \\{ SubscriptionProvider \\}.*?;", "replacement": "" },
+        { "pattern": "const ConditionalSubscriptionProvider[\\s\\S]*?return <>\\{children\\}</>;\\s*\\};", "replacement": "" },
+        { "pattern": "<SubscriptionProvider>", "replacement": "" },
+        { "pattern": "</SubscriptionProvider>", "replacement": "" },
+        { "pattern": "<Route path=\"/subscription/success\" element=\\{<SubscriptionSuccessPage />\\} />", "replacement": "" },
+        { "pattern": "<Route path=\"/subscription/cancel\" element=\\{<SubscriptionCancelPage />\\} />", "replacement": "" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/components/UserSettingsModal.tsx",
+      "description": "Remove Subscription Tab",
+      "replacements": [
+        { "pattern": "import SubscriptionSection.*?;", "replacement": "" },
+        { "pattern": "import BusinessEditionInfo.*?;", "replacement": "" },
+        { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*tabs\\.push\\('subscription'\\);\\s*\\}", "replacement": "" },
+        { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<TabsTrigger value=\"subscription\"[\\s\\S]*?</TabsTrigger>\\s*\\)\\}", "replacement": "" },
+        { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<TabsContent value=\"subscription\"[\\s\\S]*?</TabsContent>\\s*\\)\\}", "replacement": "" },
+        { "pattern": "\\{isFeatureEnabled\\('billing'\\) \\? \\(\\s*<BusinessEditionInfo />\\s*\\) : \\(\\s*<CustomInstanceInfo />\\s*\\)\\}", "replacement": "<CustomInstanceInfo />" },
+        { "pattern": "grid-cols-5", "replacement": "grid-cols-4" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/pages/Dashboard.tsx",
+      "description": "Remove Subscription Info",
+      "replacements": [
+        { "pattern": "import SubscriptionButton.*?;", "replacement": "" },
+        { "pattern": "import \\{ useSubscription \\}.*?;", "replacement": "" },
+        { "pattern": "import TrialExpiredModal.*?;", "replacement": "" },
+        { "pattern": "const \\{ subscriptionStatus \\} = useSubscription\\(\\);", "replacement": "const subscriptionStatus: any = {};" },
+        { "pattern": "\\{isFeatureEnabled\\('billing'\\) \\? \\([\\s\\S]*?Business Edition[\\s\\S]*?Community Edition[\\s\\S]*?\\)\\}", "replacement": "<Badge variant=\"outline\" className=\"text-xs bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors\" onClick={() => { setSettingsDefaultTab(\"community\"); setIsUserSettingsOpen(true); }}>Community Edition</Badge>" },
+        { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<SubscriptionButton[\\s\\S]*?/>\\s*\\)\\}", "replacement": "" },
+        { "pattern": "const showTrialExpiredModal = Boolean\\([\\s\\S]*?\\);", "replacement": "" },
+        { "pattern": "<TrialExpiredModal open=\\{showTrialExpiredModal\\} />", "replacement": "" },
+        { "pattern": "const isChatbotLimitReached = [\\s\\S]*?;", "replacement": "const isChatbotLimitReached = false;" }
+      ]
+    },
     {
       "file": "admin/backend/src/routes/profile/index.ts",
       "description": "Remove Stripe import from profile",
@@ -139,8 +204,95 @@
         ]
     },
     {
-        "file": "user/backend/src/services/calendarProviders/providerFactory.ts",
-        "description": "Remove Google Calendar Provider",
+        "file": "admin/backend/src/index.ts",
+        "description": "Remove Business Routes",
+        "replacements": [
+            { "pattern": "import trialNotificationsRoutes.*?;", "replacement": "" },
+            { "pattern": "app\\.use\\('/api/admin/trial-notifications'.*?;", "replacement": "" },
+            { "pattern": "if \\(isFeatureEnabled\\('billing'\\) \\|\\| isFeatureEnabled\\('enterprise'\\)\\) \\{[\\s\\S]*?\\}", "replacement": "" },
+            { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*// Schedule trial notification check[\\s\\S]*?adminLogger\\.info\\('Trial notification scheduler initialized'.*?\\);\\s*\\}", "replacement": "" }
+        ]
+    },
+    {
+        "file": "admin/interface/src/App.tsx",
+        "description": "Remove Subscription Routes",
+        "replacements": [
+            { "pattern": "import SubscriptionSuccessPage.*?;", "replacement": "" },
+            { "pattern": "import SubscriptionCancelPage.*?;", "replacement": "" },
+            { "pattern": "import \\{ SubscriptionProvider \\}.*?;", "replacement": "" },
+            { "pattern": "const ConditionalSubscriptionProvider[\\s\\S]*?return <>\\{children\\}</>;\\s*\\};", "replacement": "" },
+            { "pattern": "<SubscriptionProvider>", "replacement": "" },
+            { "pattern": "</SubscriptionProvider>", "replacement": "" },
+            { "pattern": "<Route path=\"/subscription/success\" element=\\{<SubscriptionSuccessPage />\\} />", "replacement": "" },
+            { "pattern": "<Route path=\"/subscription/cancel\" element=\\{<SubscriptionCancelPage />\\} />", "replacement": "" }
+        ]
+    },
+    {
+        "file": "admin/interface/src/components/UserSettingsModal.tsx",
+        "description": "Remove Subscription Tab",
+        "replacements": [
+            { "pattern": "import SubscriptionSection.*?;", "replacement": "" },
+            { "pattern": "import BusinessEditionInfo.*?;", "replacement": "" },
+            { "pattern": "if \\(isFeatureEnabled\\('billing'\\)\\) \\{\\s*tabs\\.push\\('subscription'\\);\\s*\\}", "replacement": "" },
+            { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<TabsTrigger value=\"subscription\"[\\s\\S]*?</TabsTrigger>\\s*\\)\\}", "replacement": "" },
+            { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<TabsContent value=\"subscription\"[\\s\\S]*?</TabsContent>\\s*\\)\\}", "replacement": "" },
+            { "pattern": "\\{isFeatureEnabled\\('billing'\\) \\? \\(\\s*<BusinessEditionInfo />\\s*\\) : \\(\\s*<CustomInstanceInfo />\\s*\\)\\}", "replacement": "<CustomInstanceInfo />" },
+            { "pattern": "grid-cols-5", "replacement": "grid-cols-4" }
+        ]
+    },
+    {
+        "file": "admin/interface/src/pages/Dashboard.tsx",
+        "description": "Remove Subscription Info",
+        "replacements": [
+            { "pattern": "import SubscriptionButton.*?;", "replacement": "" },
+            { "pattern": "import \\{ useSubscription \\}.*?;", "replacement": "" },
+            { "pattern": "import TrialExpiredModal.*?;", "replacement": "" },
+            { "pattern": "const \\{ subscriptionStatus \\} = useSubscription\\(\\);", "replacement": "const subscriptionStatus: any = {};" },
+            { "pattern": "\\{isFeatureEnabled\\('billing'\\) \\? \\([\\s\\S]*?Business Edition[\\s\\S]*?Community Edition[\\s\\S]*?\\)\\}", "replacement": "<Badge variant=\"outline\" className=\"text-xs bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors\" onClick={() => { setSettingsDefaultTab(\"community\"); setIsUserSettingsOpen(true); }}>Community Edition</Badge>" },
+            { "pattern": "\\{isFeatureEnabled\\('billing'\\) && \\(\\s*<SubscriptionButton[\\s\\S]*?/>\\s*\\)\\}", "replacement": "" },
+            { "pattern": "const showTrialExpiredModal = Boolean\\([\\s\\S]*?\\);", "replacement": "" },
+            { "pattern": "<TrialExpiredModal open=\\{showTrialExpiredModal\\} />", "replacement": "" },
+            { "pattern": "const isChatbotLimitReached = [\\s\\S]*?;", "replacement": "const isChatbotLimitReached = false;" }
+        ]
+    },
+    {
+      "file": "admin/interface/src/components/editor/ChatbotSettingsModal.tsx",
+      "description": "Mock Subscription Context in ChatbotSettingsModal",
+      "replacements": [
+        { "pattern": "import \\{ useSubscription \\} from '@/contexts/SubscriptionContext';", "replacement": "" },
+        { "pattern": "const \\{ refreshSubscription \\} = useSubscription\\(\\);", "replacement": "const refreshSubscription = async () => {};" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/components/editor/SystemPromptCustomization.tsx",
+      "description": "Mock Subscription Context in SystemPromptCustomization",
+      "replacements": [
+        { "pattern": "import \\{ useSubscription \\} from '@/contexts/SubscriptionContext';", "replacement": "" },
+        { "pattern": "const \\{ subscriptionStatus \\} = useSubscription\\(\\);", "replacement": "const subscriptionStatus: any = {};" },
+        { "pattern": "disabled=\\{!subscriptionStatus\\?\\.isPaidPlan\\}", "replacement": "" },
+        { "pattern": "title=\\{!subscriptionStatus\\?\\.isPaidPlan \\? \"Upgrade to customize system prompts\" : undefined\\}", "replacement": "" },
+        { "pattern": "\\{!subscriptionStatus\\?\\.isPaidPlan && \\(\\s*<span className=\"ml-2 text-xs text-muted-foreground\">\\(Premium\\)</span>\\s*\\)\\}", "replacement": "" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/components/editor/BlockPalette.tsx",
+      "description": "Mock Subscription Context in BlockPalette",
+      "replacements": [
+        { "pattern": "import \\{ useSubscription \\} from '@/contexts/SubscriptionContext';", "replacement": "" },
+        { "pattern": "const \\{ subscriptionStatus \\} = useSubscription\\(\\);", "replacement": "const subscriptionStatus: any = {};" }
+      ]
+    },
+    {
+      "file": "admin/interface/src/components/properties/WebsiteContextProperties.tsx",
+      "description": "Mock Subscription Context in WebsiteContextProperties",
+      "replacements": [
+        { "pattern": "import \\{ useSubscription \\} from '@/contexts/SubscriptionContext';", "replacement": "" },
+        { "pattern": "const \\{ subscriptionStatus \\} = useSubscription\\(\\);", "replacement": "const subscriptionStatus: any = {};" }
+      ]
+    },
+    {
+      "file": "user/backend/src/services/calendarProviders/providerFactory.ts",
+      "description": "Remove Google Calendar Provider",
         "replacements": [
             { "pattern": "import { GoogleCalendarProvider } from './googleCalendarProvider';", "replacement": "" },
             { "pattern": "case 'google_calendar':\\s+return new GoogleCalendarProvider\\(\\);", "replacement": "case 'google_calendar':\\n      throw new Error('Google Calendar integration not available in Community Edition');" }
