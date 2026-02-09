@@ -283,6 +283,13 @@
       ]
     },
     {
+      "file": "admin/interface/src/pages/LoginPage.tsx",
+      "description": "Remove Reset Password Button",
+      "replacements": [
+        { "pattern": "<Link\\s+to=\"/forgot-password\"[\\s\\S]*?</Link>", "replacement": "" }
+      ]
+    },
+    {
       "file": "admin/interface/src/components/properties/WebsiteContextProperties.tsx",
       "description": "Mock Subscription Context in WebsiteContextProperties",
       "replacements": [
